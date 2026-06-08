@@ -2,7 +2,7 @@ from fastapi import APIRouter
 import uuid
 import datetime
 from app.db.models import GenerateFlashcardsRequest, GenerateQuizRequest, GenerateStudyGuideRequest
-from app.db.supabase_client import get_supabase
+from app.db.supabase_client import get_supabase, get_learner_model, get_student_history
 from app.services.flashcard_gen import generate_flashcards
 from app.services.quiz_gen import generate_quiz
 
@@ -12,8 +12,7 @@ def _get_notebook_context(notebook_id: str) -> str:
     """Concatenates all active sources for a notebook to use as LLM context."""
     sb = get_supabase()
     if not sb:
-        return "Mock context for testing."
-        
+        return ""
     res = sb.table("sources").select("raw_content").eq("notebook_id", notebook_id).eq("is_active", True).execute()
     context = "\n\n".join([row["raw_content"] for row in res.data if row["raw_content"]])
     return context
@@ -21,7 +20,17 @@ def _get_notebook_context(notebook_id: str) -> str:
 @router.post("/flashcards")
 async def create_flashcards(req: GenerateFlashcardsRequest):
     context = _get_notebook_context(req.notebook_id)
-    cards_data = generate_flashcards(context, req.topic)
+    
+    # Retrieve student id scoping
+    sb = get_supabase()
+    student_id = "123e4567-e89b-12d3-a456-426614174000"
+    if sb:
+        res = sb.table("notebooks").select("student_id").eq("id", req.notebook_id).execute()
+        if res.data:
+            student_id = res.data[0].get("student_id") or "123e4567-e89b-12d3-a456-426614174000"
+            
+    history = get_student_history(student_id)
+    cards_data = await generate_flashcards(context, req.topic, history)
     
     deck = {
         "id": str(uuid.uuid4()),
@@ -46,7 +55,21 @@ async def create_flashcards(req: GenerateFlashcardsRequest):
 @router.post("/quiz")
 async def create_quiz(req: GenerateQuizRequest):
     context = _get_notebook_context(req.notebook_id)
-    quiz_data = generate_quiz(context, req.num_questions, req.difficulty)
+    
+    # Retrieve student id scoping
+    sb = get_supabase()
+    student_id = "123e4567-e89b-12d3-a456-426614174000"
+    if sb:
+        res = sb.table("notebooks").select("student_id").eq("id", req.notebook_id).execute()
+        if res.data:
+            student_id = res.data[0].get("student_id") or "123e4567-e89b-12d3-a456-426614174000"
+            
+    # Load profile data from Supabase
+    learner_model = get_learner_model(student_id)
+    history = get_student_history(student_id)
+    
+    # Generate quiz personalized for the student's cognitive records and discussed themes
+    quiz_data = await generate_quiz(context, req.num_questions, req.difficulty, learner_model, history)
     
     questions = []
     for q in quiz_data:
@@ -61,21 +84,8 @@ async def create_quiz(req: GenerateQuizRequest):
         
     return {"quiz": {"id": str(uuid.uuid4()), "questions": questions}}
 
+
 @router.post("/study-guide")
 async def create_study_guide(req: GenerateStudyGuideRequest):
-    # For prototype, we'll mock the study guide generation to save LLM tokens.
-    # Normally this would call an LLM with the notebook context.
-    guide = """# Study Guide
-
-## 1. Key Concepts
-* Concept A: Explanation and details.
-* Concept B: Explanation and details.
-
-## 2. Important Relationships
-How A relates to B.
-
-## 3. Practice Questions
-1. What is the significance of A?
-2. Compare and contrast A and B.
-"""
-    return {"guide": guide}
+    from fastapi import HTTPException
+    raise HTTPException(status_code=501, detail="Study guide generation with LLM is not implemented yet.")

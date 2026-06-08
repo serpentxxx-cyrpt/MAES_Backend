@@ -1,20 +1,45 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from typing import Optional, Dict, List
 
-# Session Models
-class StartSessionRequest(BaseModel):
-    notebook_id: str
-    domain: Optional[str] = "General"
+class SessionStartRequest(BaseModel):
+    student_id: str
+    domain: str
+    notebook_id: Optional[str] = None
 
-class EndSessionRequest(BaseModel):
+class SessionEndRequest(BaseModel):
     session_id: str
 
-# Turn Models
 class TurnRequest(BaseModel):
     session_id: str
     student_message: str
 
-# Sources Models
+class AgentADraft(BaseModel):
+    hint_text: str
+    internal_reasoning: str
+    estimated_bloom_level: str
+
+class AgentBResult(BaseModel):
+    decision: str
+    correction_note: Optional[str] = None
+    register_switch: Optional[str] = None
+    struggle_level: Optional[str] = None
+    bloom_tag_student: str
+    bloom_tag_hint: str
+    rubric_scores: Dict[str, int]
+
+# Notebook Models
+class CreateNotebookRequest(BaseModel):
+    title: str
+    domain: Optional[str] = "General"
+
+class CreateNoteRequest(BaseModel):
+    title: str
+    content: str
+
+class UpdateNoteRequest(BaseModel):
+    content: str
+
+# Source Ingestion Models
 class ImportUrlRequest(BaseModel):
     notebook_id: str
     url: str
@@ -31,18 +56,6 @@ class PasteTextRequest(BaseModel):
 class ToggleSourceRequest(BaseModel):
     is_active: bool
 
-# Notebook Models
-class CreateNotebookRequest(BaseModel):
-    title: str
-    domain: Optional[str] = None
-
-class CreateNoteRequest(BaseModel):
-    title: str
-    content: str
-
-class UpdateNoteRequest(BaseModel):
-    content: str
-
 # Studio Models
 class GenerateFlashcardsRequest(BaseModel):
     notebook_id: str
@@ -50,8 +63,8 @@ class GenerateFlashcardsRequest(BaseModel):
 
 class GenerateQuizRequest(BaseModel):
     notebook_id: str
-    num_questions: int = Field(5, ge=1, le=20)
-    difficulty: str = Field("medium", pattern="^(easy|medium|hard)$")
+    num_questions: Optional[int] = 5
+    difficulty: Optional[str] = "medium"
 
 class GenerateStudyGuideRequest(BaseModel):
     notebook_id: str
@@ -59,5 +72,6 @@ class GenerateStudyGuideRequest(BaseModel):
 # Simulation Models
 class SimulateRequest(BaseModel):
     profile_id: str
-    n_turns: int = Field(10, ge=1, le=50)
-    learning_rate: str = Field("average", pattern="^(slow|average|fast)$")
+    n_turns: int
+    learning_rate: float
+

@@ -1,67 +1,93 @@
 from fastapi import APIRouter
 from app.db.neon_client import get_neon_conn
 import datetime
+import logging
+import json
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/audit", tags=["Audit & Dashboard"])
 
 @router.get("/dashboard/summary")
 async def get_dashboard_summary():
-    # If Neon DB is not connected, return mock data for prototype
-    conn = get_neon_conn()
-    if not conn:
-        return {
-            "sessions": [
-                {
-                    "session_id": "sim_1",
-                    "student_id": "student_x",
-                    "domain": "Calculus",
-                    "started_at": datetime.datetime.now().isoformat(),
-                    "avg_hint_quality": 4.2,
-                    "avg_bloom": 3.5,
-                    "turns": 12
-                },
-                {
-                    "session_id": "sim_2",
-                    "student_id": "student_y",
-                    "domain": "History",
-                    "started_at": (datetime.datetime.now() - datetime.timedelta(days=1)).isoformat(),
-                    "avg_hint_quality": 4.8,
-                    "avg_bloom": 4.0,
-                    "turns": 8
-                }
-            ]
-        }
-        
+    """Fetches session performance metrics and recent logs from Neon DB asynchronously."""
+    conn = None
     try:
-        # In a real app, this would aggregate data from the audit_logs table
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT 
-                    session_id, 
-                    MAX(student_id) as student_id, 
-                    COUNT(*) as turns,
-                    AVG((metadata->'scores'->>'hint_quality')::numeric) as avg_hint_quality
-                FROM audit_logs
-                WHERE event_type = 'agent_b_done'
-                GROUP BY session_id
-                ORDER BY MAX(created_at) DESC
-                LIMIT 50
-            """)
-            rows = cur.fetchall()
+        conn = await get_neon_conn()
+        
+        # Execute query asynchronously using asyncpg
+        rows = await conn.fetch("""
+            SELECT 
+                session_id, 
+                MAX(student_id) as student_id, 
+                COUNT(*) as turns,
+                AVG((metadata->'scores'->>'hint_quality')::numeric) as avg_hint_quality,
+                AVG((metadata->'scores'->>'bloom_alignment')::numeric) as avg_bloom_alignment
+            FROM audit_logs
+            WHERE event_type = 'agent_b_done'
+            GROUP BY session_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT 50
+        """)
+        
+        sessions = []
+        for row in rows:
+            sessions.append({
+                "session_id": row["session_id"],
+                "student_id": row["student_id"],
+                "domain": "Socratic Computer Science",
+                "started_at": datetime.datetime.now().isoformat(), # approximate
+                "avg_hint_quality": float(row["avg_hint_quality"]) if row["avg_hint_quality"] is not None else 0.0,
+                "avg_bloom": float(row["avg_bloom_alignment"]) if row["avg_bloom_alignment"] is not None else 0.0,
+                "turns": row["turns"]
+            })
             
-            sessions = []
-            for row in rows:
-                sessions.append({
-                    "session_id": row[0],
-                    "student_id": row[1],
-                    "domain": "General", # Would join with sessions table
-                    "started_at": datetime.datetime.now().isoformat(),
-                    "avg_hint_quality": float(row[3]) if row[3] else 0,
-                    "avg_bloom": 3.0,
-                    "turns": row[2]
-                })
-            return {"sessions": sessions}
+        return {"sessions": sessions}
+        
     except Exception as e:
-        return {"error": str(e), "sessions": []}
+        logger.error(f"Failed to fetch audit log summary from Neon DB: {e}")
+        # Return empty list if connection fails
+        return {"sessions": []}
     finally:
-        conn.close()
+        if conn:
+            await conn.close()
+
+@router.get("/logs/{session_id}")
+async def get_audit_logs(session_id: str):
+    """Fetches the real-time telemetry stream for a specific session."""
+    conn = None
+    try:
+        conn = await get_neon_conn()
+        rows = await conn.fetch("""
+            SELECT 
+                id, 
+                created_at, 
+                event_type, 
+                metadata
+            FROM audit_logs
+            WHERE session_id = $1
+            ORDER BY created_at ASC
+        """, session_id)
+        
+        logs = []
+        for row in rows:
+            meta = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else (row["metadata"] or {})
+            
+            # Reconstruct the log object for the frontend
+            status = meta.get("status", "approved" if row["event_type"] == "agent_b_done" else "pending")
+            text = meta.get("text", "")
+            
+            logs.append({
+                "id": str(row["id"]),
+                "time": row["created_at"].strftime("%H:%M:%S"),
+                "event": row["event_type"],
+                "text": text,
+                "status": status
+            })
+        return {"logs": logs}
+    except Exception as e:
+        logger.error(f"Failed to fetch session audit logs: {e}")
+        return {"logs": []}
+    finally:
+        if conn:
+            await conn.close()
+

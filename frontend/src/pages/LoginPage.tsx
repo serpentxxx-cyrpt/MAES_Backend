@@ -1,122 +1,94 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { BookOpen, Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react'
-import { supabase } from '../lib/supabaseClient'
+import React, { useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { ShieldAlert } from 'lucide-react';
 
-export function LoginPage() {
-  const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw, setShowPw] = useState(false)
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    try {
-      if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
-      } else {
-        const { error } = await supabase.auth.signUp({ email, password })
-        if (error) throw error
-      }
-      navigate('/')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Authentication failed')
-    } finally {
-      setLoading(false)
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage('Secure access link sent to your email.');
     }
-  }
+    setLoading(false);
+  };
+
+  const handleDemoLogin = () => {
+    localStorage.setItem('maes_demo_session', JSON.stringify({
+      user: {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        email: 'student@edu.org',
+        user_metadata: { name: 'Demo Student' }
+      },
+      access_token: 'eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwgInJvbGUiOiAiZGVtbyJ9.abcdefg123456789'
+    }));
+    window.dispatchEvent(new Event('maes_auth_change'));
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-950 px-4">
-      {/* Background glow */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-600/10 rounded-full blur-3xl" />
-      </div>
-
-      <div className="w-full max-w-sm animate-slide-up relative">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center mx-auto mb-4 shadow-2xl shadow-primary-900/50">
-            <BookOpen size={24} className="text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-canvas p-4">
+      <div className="panel-container w-full max-w-md bg-canvas">
+        <div className="flex flex-col items-center mb-8">
+          <div className="bg-brand text-canvas p-4 mb-4">
+            <ShieldAlert size={48} />
           </div>
-          <h1 className="text-2xl font-bold gradient-text">MAES</h1>
-          <p className="text-sm text-surface-400 mt-1">Multi-Agent Educational Scaffolding System</p>
+          <h1 className="text-2xl font-bold text-brand uppercase tracking-widest text-center">
+            Socratic Pedagogy Platform
+          </h1>
+          <p className="text-ink font-mono mt-2 uppercase text-sm font-semibold tracking-wider">
+            Socratic Protocol Initiated
+          </p>
         </div>
 
-        {/* Card */}
-        <div className="glass-panel p-6">
-          {/* Tab switcher */}
-          <div className="flex bg-surface-800 rounded-lg p-1 mb-6">
-            {(['login', 'signup'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => { setMode(m); setError('') }}
-                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all duration-200
-                  ${mode === m ? 'bg-surface-700 text-surface-50 shadow-sm' : 'text-surface-400 hover:text-surface-200'}`}
-              >
-                {m === 'login' ? 'Sign In' : 'Sign Up'}
-              </button>
-            ))}
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-ink font-bold uppercase text-xs tracking-wider">
+              Student Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="border border-ink bg-transparent p-3 text-ink font-mono focus:outline-none focus:ring-1 focus:ring-brand"
+              placeholder="student@edu.org"
+              required
+            />
           </div>
+          
+          <button type="submit" className="btn-alert mt-4 uppercase tracking-widest" disabled={loading}>
+            {loading ? 'Authenticating...' : 'Request Access Link'}
+          </button>
+        </form>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-xs text-surface-400 mb-1 block">Email</label>
-              <div className="relative">
-                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500" />
-                <input
-                  type="email"
-                  className="input-base pl-9"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-surface-400 mb-1 block">Password</label>
-              <div className="relative">
-                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500" />
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  className="input-base pl-9 pr-9"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <button type="button" onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300">
-                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <p className="text-xs text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-
-            <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-              {mode === 'login' ? 'Sign In' : 'Create Account'}
-            </button>
-          </form>
+        <div className="flex flex-col gap-2 mt-4">
+          <div className="flex items-center gap-2">
+            <div className="h-px bg-ink/20 flex-1"></div>
+            <span className="text-[10px] font-mono uppercase text-ink/40">Offline Bypass</span>
+            <div className="h-px bg-ink/20 flex-1"></div>
+          </div>
+          
+          <button 
+            type="button" 
+            onClick={handleDemoLogin} 
+            className="btn-primary uppercase tracking-widest text-xs py-3 text-center"
+          >
+            Enter Demo Access Mode
+          </button>
         </div>
-
-        <p className="text-center text-xs text-surface-600 mt-4">
-          By signing in you agree to use MAES for educational purposes.
-        </p>
+        
+        {message && (
+          <div className="mt-6 p-3 border-l-4 border-alert bg-canvas text-ink font-mono text-sm font-medium">
+            &gt; SYSTEM MESSAGE: {message}
+          </div>
+        )}
       </div>
     </div>
-  )
+  );
 }
+

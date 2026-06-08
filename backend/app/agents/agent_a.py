@@ -1,75 +1,75 @@
-from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
+# pyrefly: ignore [missing-import]
+from openai import AsyncOpenAI
 from app.config import settings
-import logging
+import json
+from app.services.json_utils import repair_and_parse_json
 
-logger = logging.getLogger(__name__)
-
-# System prompt based on maes_fullstack_config.md specifications
-SYSTEM_PROMPT = """You are Agent A, a Socratic Tutor. Your goal is to guide the student to the answer without ever giving it to them directly.
-Use the provided sources (if any) to ground your knowledge.
-
-Rules:
-1. NEVER give the direct answer to the student's question.
-2. Ask probing questions to lead them to the answer.
-3. Use analogies if the concept is complex.
-4. Keep your responses concise (under 100 words).
-5. Adapt to the student's level of understanding.
-
-If the student is frustrated, acknowledge it and break the problem down into smaller, easier steps.
+AGENT_A_SYSTEM = """
+You are Agent A: the AI Teacher. Your goal is to explain topics comprehensively based on the context provided, solve problems when the student is stuck, and occasionally ask questions to verify understanding. Do not be overly strict about hiding answers.
+Always respond with a JSON object only:
+{
+  "hint_text": "...",
+  "internal_reasoning": "...",
+  "estimated_bloom_level": "remember|understand|apply|analyze|evaluate|create"
+}
 """
 
-def get_agent_a():
-    """Initializes and returns Agent A (Socratic Tutor) using Groq Llama 3.1 8b."""
-    if not settings.GROQ_API_KEY:
-        logger.warning("GROQ_API_KEY missing. Agent A cannot be initialized.")
-        return None
-        
-    return ChatGroq(
-        model_name="llama-3.1-8b-instant",
-        api_key=settings.GROQ_API_KEY,
-        temperature=0.7
+async def run_agent_a(state: dict) -> dict:
+    correction = state.get("agent_b_signal", {})
+    correction_note = ""
+    if correction and correction.get("correction"):
+        correction_note = f"\n\nAUDIT CORRECTION: {correction['correction']}"
+    if correction and correction.get("register_switch"):
+        correction_note += f"\nSWITCH REGISTER TO: {correction['register_switch']}"
+
+    history_str = ""
+    history_list = state.get("dialogue_history", [])
+    if history_list:
+        history_str = "\n\nDIALOGUE HISTORY:\n" + "\n".join([
+            f"{'Student' if h['role'] == 'student' else 'Tutor'}: {h['text']}" for h in history_list
+        ])
+
+    payload = {
+        "student_message": state["student_message"],
+        "dialogue_history": state.get("dialogue_history", []),
+        "learner_model": state.get("learner_model", {}),
+        "current_register": state.get("current_register", "socratic")
+    }
+
+    prompt_text = f"RESPOND TO THIS STATE:\n{json.dumps(payload, indent=2)}\n\n"
+    if state.get("active_sources"):
+        prompt_text += f"\n--- PROVIDED DOCUMENTS/SOURCES ---\n{state['active_sources']}\n-----------------------------------\n"
+        prompt_text += "\nCRITICAL: You MUST read the PROVIDED DOCUMENTS/SOURCES above to answer the user. Do NOT claim you don't have access to the document, the full text is provided right above this line."
+    
+    if correction_note:
+        prompt_text += correction_note
+
+    messages = [
+        {"role": "system", "content": AGENT_A_SYSTEM},
+        {"role": "user", "content": prompt_text}
+    ]
+
+    client = AsyncOpenAI(api_key=settings.mistral_api_key, base_url="https://api.mistral.ai/v1")
+    response = await client.chat.completions.create(
+        model="mistral-large-latest",
+        messages=messages,
+        response_format={"type": "json_object"},
+        temperature=0.7,
+        max_tokens=800
     )
 
-def draft_hint(student_message: str, chat_history: list, sources_text: str = "") -> str:
-    """Drafts an initial Socratic hint."""
-    agent = get_agent_a()
+    draft = repair_and_parse_json(response.choices[0].message.content)
     
-    context = f"Sources:\n{sources_text[:10000]}\n\n" if sources_text else ""
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    # Save the audit log
+    from app.db.neon_client import log_event
+    hint_text = draft.get("hint_text", "")
+    await log_event(
+        session_id=state.get("session_id", ""),
+        student_id=state.get("student_id", ""),
+        event_type="agent_a_draft",
+        text=f"Tutor generated draft hint: {hint_text[:50]}...",
+        status="pending"
+    )
     
-    # Add history (limiting to last 5 turns to save context)
-    for msg in chat_history[-10:]:
-        # Chat history should be formatted as HumanMessage / AIMessage
-        pass # In actual orchestration, this is passed directly via LangGraph state
-        
-    # Draft raw message
-    messages.append(HumanMessage(content=f"{context}Student: {student_message}"))
-    
-    try:
-        response = agent.invoke(messages)
-        return response.content
-    except Exception as e:
-        logger.error(f"Agent A drafting failed: {e}")
-        return "I'm having trouble thinking right now. Let's try again in a moment."
+    return {**state, "agent_a_draft": draft}
 
-def revise_hint(draft: str, feedback: str, student_message: str) -> str:
-    """Revises a hint based on Agent B's feedback."""
-    agent = get_agent_a()
-    
-    prompt = f"""
-    You are the Socratic Tutor. Your previous hint draft was rejected by the Pedagogical Auditor.
-    
-    Student's question: {student_message}
-    Your rejected draft: {draft}
-    Auditor's feedback: {feedback}
-    
-    Rewrite your hint to address the auditor's feedback perfectly. Remember: NEVER give the direct answer.
-    """
-    
-    try:
-        response = agent.invoke([SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)])
-        return response.content
-    except Exception as e:
-        logger.error(f"Agent A revision failed: {e}")
-        return draft # Fallback to original draft if revision fails

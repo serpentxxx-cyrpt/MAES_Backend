@@ -1,70 +1,56 @@
-import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { supabase } from './lib/supabaseClient'
-import { Navbar } from './components/shared/Navbar'
-import { LoginPage } from './pages/LoginPage'
-import { NotebookList } from './pages/NotebookList'
-import { NotebookView } from './pages/NotebookView'
-import { TeacherDashboard } from './pages/TeacherDashboard'
-import { AdminPanel } from './pages/AdminPanel'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import NotebookView from './pages/NotebookView';
+import NotebookList from './pages/NotebookList';
 
-function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main className="flex-1">{children}</main>
-    </div>
-  )
-}
+// We intentionally do not import LoginPage to leave it inactive, but we leave the file in the repository.
 
-export default function App() {
-  const [session, setSession] = useState<boolean | null>(null)
+function App() {
+  const [, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(!!data.session)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, sess) => {
-      setSession(!!sess)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+    // Unconditionally establish direct access mock session for demo mode
+    const demoPayload = {
+      access_token: "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwgInJvbGUiOiAiZGVtbyJ9.abcdefg123456789",
+      user: {
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        email: "demo@socratic.local",
+        user_metadata: { role: "demo" }
+      }
+    };
+    localStorage.setItem('maes_demo_session', JSON.stringify(demoPayload));
+    setSession(demoPayload);
+    setLoading(false);
+  }, []);
 
-  // Loading state
-  if (session === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-950">
-        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+  if (loading) {
+    return <div className="min-h-screen bg-canvas text-ink flex items-center justify-center font-mono font-bold uppercase tracking-widest">Initializing...</div>;
   }
 
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
-        <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
-        <Route path="/" element={
-          session
-            ? <ProtectedLayout><NotebookList /></ProtectedLayout>
-            : <Navigate to="/login" replace />
-        } />
-        <Route path="/notebook/:id" element={
-          session
-            ? <NotebookView />
-            : <Navigate to="/login" replace />
-        } />
-        <Route path="/dashboard" element={
-          session
-            ? <ProtectedLayout><TeacherDashboard /></ProtectedLayout>
-            : <Navigate to="/login" replace />
-        } />
-        <Route path="/admin" element={
-          session
-            ? <ProtectedLayout><AdminPanel /></ProtectedLayout>
-            : <Navigate to="/login" replace />
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route 
+          path="/" 
+          element={<NotebookList />} 
+          key="notebook-list-route"
+        />
+        <Route 
+          path="/notebook/:notebookId" 
+          element={<NotebookView />} 
+          key="notebook-view-route"
+        />
+        {/* Redirect any stray /login navigation to root */}
+        <Route 
+          path="/login" 
+          element={<Navigate to="/" />} 
+          key="login-route"
+        />
       </Routes>
-    </BrowserRouter>
-  )
+    </Router>
+  );
 }
+
+export default App;
+

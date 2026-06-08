@@ -7,13 +7,22 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from fastapi import UploadFile
 
 async def extract_text_from_pdf(file: UploadFile) -> str:
-    """Extracts text from a PDF file using pypdf."""
+    """Extracts text from a PDF file using PyMuPDF (fitz)."""
+    import fitz
+    import logging
     content = await file.read()
-    reader = PdfReader(io.BytesIO(content))
+    logging.warning(f"PDF uploaded, bytes length: {len(content)}")
+    doc = fitz.open(stream=content, filetype="pdf")
     text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
-    return text.strip()
+    for i, page in enumerate(doc):
+        text += f"\n--- PAGE {i+1} ---\n"
+        text += page.get_text() + "\n"
+    text = text.strip()
+    if not text:
+        text = "SYSTEM NOTE: The uploaded PDF could not be read because it appears to be a scanned image or has no readable text layer. The AI cannot see the contents."
+    
+    logging.warning(f"Extracted text length: {len(text)}")
+    return text
 
 def extract_text_from_url(url: str) -> str:
     """Fetches a webpage and extracts visible text using BeautifulSoup."""

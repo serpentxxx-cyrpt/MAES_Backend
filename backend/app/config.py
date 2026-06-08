@@ -1,36 +1,32 @@
-import os
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from functools import lru_cache
+# pyrefly: ignore [missing-import]
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # LLM APIs
-    GROQ_API_KEY: str = ""
-    GEMINI_API_KEY: str = ""
-    OPENROUTER_API_KEY: str = ""
+    app_env: str = "development"
+    secret_key: str
     
-    # Supabase
-    SUPABASE_URL: str = ""
-    SUPABASE_SERVICE_ROLE_KEY: str = ""
-    SUPABASE_DB_URL: str = ""
+    supabase_url: str
+    supabase_service_role_key: str
+    supabase_db_url: str
     
-    # Neon DB
-    NEON_DATABASE_URL: str = ""
+    neon_database_url: str
     
-    # Upstash Redis
-    UPSTASH_REDIS_REST_URL: str = ""
-    UPSTASH_REDIS_REST_TOKEN: str = ""
+    upstash_redis_rest_url: str
+    upstash_redis_rest_token: str
     
-    # App Security
-    SECRET_KEY: str = "fallback_insecure_secret_key_change_me_in_prod"
+    groq_api_key: str
+    gemini_api_key: str
+    openrouter_api_key: str
+    mistral_api_key: str
     
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
+    agent_a_model: str = "llama-3.1-8b-instant"
+    agent_b_model: str = "gemini-3.5-flash"
+    fallback_model: str = "mistralai/mistral-7b-instruct"
+    
+    session_ttl_minutes: int = 30
 
-@lru_cache()
-def get_settings() -> Settings:
-    return Settings()
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
 
-settings = get_settings()
+settings = Settings()

@@ -1,30 +1,22 @@
-from redis import Redis
+from upstash_redis.asyncio import Redis
 from app.config import settings
-import logging
+import json
 
-logger = logging.getLogger(__name__)
+redis = Redis(
+    url=settings.upstash_redis_rest_url,
+    token=settings.upstash_redis_rest_token
+)
 
-def get_redis() -> Redis:
-    """Returns a Redis client for Upstash Serverless Redis."""
-    if not settings.UPSTASH_REDIS_REST_URL or not settings.UPSTASH_REDIS_REST_TOKEN:
-        logger.warning("Upstash Redis credentials missing. Caching will be disabled.")
-        return None
-        
-    try:
-        # Standard Redis client works over standard port, but Upstash REST is HTTPS.
-        # Since the requirements use standard 'redis', we assume UPSTASH_REDIS_REST_URL 
-        # is actually the redis:// URI for standard client. If they use the REST API, 
-        # they should use the 'upstash-redis' package. 
-        # We will parse the URL. If it starts with https://, we can't use standard redis easily.
-        # Assuming the user provides the redis:// or rediss:// connection string in the REST_URL var.
-        
-        url = settings.UPSTASH_REDIS_REST_URL
-        if url.startswith("http"):
-            logger.warning("Upstash URL is HTTP. The standard 'redis' package requires redis:// or rediss://.")
-            return None
-            
-        r = Redis.from_url(url, password=settings.UPSTASH_REDIS_REST_TOKEN, decode_responses=True)
-        return r
-    except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        return None
+async def get_session_context(session_id: str) -> dict | None:
+    raw = await redis.get(f"session:{session_id}")
+    return json.loads(raw) if raw else None
+
+async def set_session_context(session_id: str, context: dict) -> None:
+    await redis.set(
+        f"session:{session_id}",
+        json.dumps(context),
+        ex=settings.session_ttl_minutes * 60
+    )
+
+async def delete_session(session_id: str) -> None:
+    await redis.delete(f"session:{session_id}")

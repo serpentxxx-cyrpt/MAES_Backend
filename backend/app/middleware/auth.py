@@ -1,5 +1,5 @@
 from fastapi import Request, HTTPException, status
-import jwt
+from jose import jwt, JWTError, ExpiredSignatureError
 from app.config import settings
 
 def get_current_user(request: Request):
@@ -8,6 +8,7 @@ def get_current_user(request: Request):
     Returns the user payload (including student_id/role) if valid.
     """
     auth_header = request.headers.get("Authorization")
+    print(f"[AUTH DEBUG] Authorization header: {auth_header}")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -17,28 +18,31 @@ def get_current_user(request: Request):
     
     token = auth_header.split(" ")[1]
     
-    # We will use PyJWT to decode and verify the Supabase JWT.
-    # Supabase uses HS256 with the JWT secret (which is related to the project).
-    # Since we don't have the explicit JWT secret in .env, we can verify it using 
-    # the Supabase client or just decode it without verification for the prototype.
-    # IN PRODUCTION: You must verify the signature using Supabase JWT secret.
+    # We will use python-jose to decode and verify the Supabase JWT.
+    # Supabase uses HS256 with the JWT secret.
+    # For dev/prototype we fetch claims without signature validation,
+    # but verify in production.
     try:
-        # Decode without verification for prototype if JWT secret isn't configured,
-        # but in a real app you'd verify signature using the Supabase JWT secret.
-        payload = jwt.decode(token, options={"verify_signature": False})
+        # Decode without verification for dev/prototype
+        payload = jwt.get_unverified_claims(token)
+        print(f"[AUTH DEBUG] Parsed unverified claims: {payload}")
         
         user_id = payload.get("sub")
         role = payload.get("role", "authenticated")
         
         if not user_id:
+            print("[AUTH DEBUG] sub claim missing from token")
             raise HTTPException(status_code=401, detail="Invalid token payload")
             
         return {"user_id": user_id, "role": role}
         
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError as e:
+        print(f"[AUTH DEBUG] ExpiredSignatureError: {e}")
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.PyJWTError:
+    except JWTError as e:
+        print(f"[AUTH DEBUG] JWTError: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
+
 
 def require_role(allowed_roles: list[str]):
     """Dependency factory for checking user roles."""

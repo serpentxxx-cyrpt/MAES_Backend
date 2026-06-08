@@ -1,52 +1,70 @@
+import asyncpg
 import json
-import logging
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+async def get_neon_conn():
+    """Establishes and returns an asyncpg connection to the Neon Postgres database."""
+    return await asyncpg.connect(settings.neon_database_url)
 
-# Neon uses raw psycopg. Since we may deploy on serverless environments,
-# connection pooling is recommended, but for this prototype we'll use a direct connection
-# or an HTTP proxy if psycopg fails.
-
-def get_neon_conn():
-    """Returns a raw DB connection for logging audit events directly via Neon Postgres."""
-    if not settings.NEON_DATABASE_URL:
-        logger.warning("Neon DB credentials missing. Audit logs will be disabled.")
-        return None
-        
+async def log_audit_entry(session_id: str, student_id: str, turn_number: int, data: dict):
+    """Logs an agent turn audit event to the Neon database."""
+    conn = await get_neon_conn()
     try:
-        try:
-            import psycopg
-            conn = psycopg.connect(settings.NEON_DATABASE_URL)
-            return conn
-        except ImportError:
-            # Fallback for Windows if psycopg3 is installed as psycopg[binary] or not found
-            # Attempt to use psycopg2 if it exists
-            import psycopg2
-            conn = psycopg2.connect(settings.NEON_DATABASE_URL)
-            return conn
-    except Exception as e:
-        logger.error(f"Failed to connect to Neon Audit DB: {e}")
-        return None
-
-def log_audit_event(session_id: str, student_id: str, event_type: str, metadata: dict):
-    """Fire and forget audit log to Neon database."""
-    conn = get_neon_conn()
-    if not conn:
-        return
+        # Construct the metadata JSON payload
+        metadata = {
+            "turn_number": turn_number,
+            "student_message": data.get("student_message"),
+            "hint_delivered": data.get("hint_delivered"),
+            "bloom_tag_student": data.get("bloom_tag_student"),
+            "bloom_tag_hint": data.get("bloom_tag_hint"),
+            "register_at_turn": data.get("register_at_turn"),
+            "decision": data.get("decision"),
+            "correction_applied": data.get("correction_applied", False),
+            "struggle_level": data.get("struggle_level"),
+            "scores": {
+                "hint_quality": data.get("score_hint_quality"),
+                "tone": data.get("score_tone"),
+                "correctness": data.get("score_correctness"),
+                "bloom_alignment": data.get("score_bloom_align")
+            }
+        }
         
-    try:
-        with conn.cursor() as cur:
-            # We assume a table exists: audit_logs(id uuid, session_id text, student_id text, event_type text, metadata jsonb, created_at timestamp)
-            cur.execute(
-                """
-                INSERT INTO audit_logs (session_id, student_id, event_type, metadata)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (session_id, student_id, event_type, json.dumps(metadata))
-            )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to log audit event to Neon: {e}")
+        await conn.execute(
+            """
+            INSERT INTO audit_logs (
+                session_id, student_id, event_type, metadata
+            ) VALUES ($1, $2, $3, $4)
+            """,
+            session_id,
+            student_id,
+            "agent_b_done",
+            json.dumps(metadata)
+        )
     finally:
-        conn.close()
+        await conn.close()
+
+async def log_event(session_id: str, student_id: str, event_type: str, text: str, status: str):
+    """Logs a raw telemetry event to the Neon DB."""
+    conn = await get_neon_conn()
+    try:
+        metadata = {
+            "text": text,
+            "status": status
+        }
+        await conn.execute(
+            """
+            INSERT INTO audit_logs (
+                session_id, student_id, event_type, metadata
+            ) VALUES ($1, $2, $3, $4)
+            """,
+            session_id,
+            student_id,
+            event_type,
+            json.dumps(metadata)
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to log event: {e}")
+    finally:
+        await conn.close()
+
