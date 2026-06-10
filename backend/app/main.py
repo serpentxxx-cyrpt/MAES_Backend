@@ -1,11 +1,18 @@
 import sys
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import session, turn, notebooks, sources, studio, audit, simulate
 from app.middleware.rate_limiter import RateLimitingMiddleware
+from app.db.neon_client import init_neon_pool, close_neon_pool
 
-app = FastAPI(title="MAES Backend", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_neon_pool()
+    yield
+    await close_neon_pool()
+
+app = FastAPI(title="MAES Backend", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

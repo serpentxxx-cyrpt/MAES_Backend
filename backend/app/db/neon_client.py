@@ -1,14 +1,33 @@
 import asyncpg
 import json
+import logging
 from app.config import settings
 
-async def get_neon_conn():
-    """Establishes and returns an asyncpg connection to the Neon Postgres database."""
-    return await asyncpg.connect(settings.neon_database_url)
+logger = logging.getLogger(__name__)
+
+_pool = None
+
+async def init_neon_pool():
+    global _pool
+    if not _pool:
+        _pool = await asyncpg.create_pool(settings.neon_database_url, min_size=1, max_size=10)
+        logger.info("Neon database connection pool initialized.")
+
+async def close_neon_pool():
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
+        logger.info("Neon database connection pool closed.")
+
+def get_neon_pool():
+    if not _pool:
+        raise RuntimeError("Neon connection pool is not initialized.")
+    return _pool
 
 async def log_audit_entry(session_id: str, student_id: str, turn_number: int, data: dict):
     """Logs an agent turn audit event to the Neon database."""
-    conn = await get_neon_conn()
+    pool = get_neon_pool()
     try:
         # Construct the metadata JSON payload
         metadata = {
@@ -29,42 +48,41 @@ async def log_audit_entry(session_id: str, student_id: str, turn_number: int, da
             }
         }
         
-        await conn.execute(
-            """
-            INSERT INTO audit_logs (
-                session_id, student_id, event_type, metadata
-            ) VALUES ($1, $2, $3, $4)
-            """,
-            session_id,
-            student_id,
-            "agent_b_done",
-            json.dumps(metadata)
-        )
-    finally:
-        await conn.close()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO audit_logs (
+                    session_id, student_id, event_type, metadata
+                ) VALUES ($1, $2, $3, $4)
+                """,
+                session_id,
+                student_id,
+                "agent_b_done",
+                json.dumps(metadata)
+            )
+    except Exception as e:
+        logger.error(f"Failed to log audit entry: {e}")
 
 async def log_event(session_id: str, student_id: str, event_type: str, text: str, status: str):
     """Logs a raw telemetry event to the Neon DB."""
-    conn = await get_neon_conn()
+    pool = get_neon_pool()
     try:
         metadata = {
             "text": text,
             "status": status
         }
-        await conn.execute(
-            """
-            INSERT INTO audit_logs (
-                session_id, student_id, event_type, metadata
-            ) VALUES ($1, $2, $3, $4)
-            """,
-            session_id,
-            student_id,
-            event_type,
-            json.dumps(metadata)
-        )
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO audit_logs (
+                    session_id, student_id, event_type, metadata
+                ) VALUES ($1, $2, $3, $4)
+                """,
+                session_id,
+                student_id,
+                event_type,
+                json.dumps(metadata)
+            )
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Failed to log event: {e}")
-    finally:
-        await conn.close()
+        logger.error(f"Failed to log event: {e}")
 

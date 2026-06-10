@@ -1,9 +1,10 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
 import uuid
 from typing import List
 from app.db.models import ImportUrlRequest, ImportYoutubeRequest, PasteTextRequest, ToggleSourceRequest
 from app.db.supabase_client import get_supabase
 from app.services.source_processor import extract_text_from_pdf, extract_text_from_url, extract_text_from_youtube
+from app.services.embedding_service import process_source
 from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/sources", tags=["Sources"])
@@ -46,6 +47,7 @@ async def get_sources(notebook_id: str, user: dict = Depends(get_current_user)):
 async def upload_file(
     notebook_id: str = Form(...), 
     file: UploadFile = File(...), 
+    bg_tasks: BackgroundTasks = None,
     user: dict = Depends(get_current_user)
 ):
     sb = get_supabase()
@@ -62,33 +64,44 @@ async def upload_file(
         
     from app.services.knowledge_extractor import extract_knowledge
     structured = await extract_knowledge(text)
-    return _save_source(notebook_id, "pdf" if file.filename.endswith('.pdf') else "note", file.filename, text, structured)
+    result = _save_source(notebook_id, "pdf" if file.filename.endswith('.pdf') else "note", file.filename, text, structured)
+    # Phase 3 RAG: trigger background embedding
+    source_id = result["source"]["id"]
+    if bg_tasks:
+        bg_tasks.add_task(process_source, source_id, notebook_id, text)
+    return result
 
 @router.post("/import-url")
-async def import_url(req: ImportUrlRequest, user: dict = Depends(get_current_user)):
+async def import_url(req: ImportUrlRequest, bg_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     sb = get_supabase()
     _check_notebook_owner(sb, req.notebook_id, user["user_id"])
-    text = extract_text_from_url(req.url)
+    text = await extract_text_from_url(req.url)
     from app.services.knowledge_extractor import extract_knowledge
     structured = await extract_knowledge(text)
-    return _save_source(req.notebook_id, "url", req.url, text, structured)
+    result = _save_source(req.notebook_id, "url", req.url, text, structured)
+    bg_tasks.add_task(process_source, result["source"]["id"], req.notebook_id, text)
+    return result
 
 @router.post("/import-youtube")
-async def import_youtube(req: ImportYoutubeRequest, user: dict = Depends(get_current_user)):
+async def import_youtube(req: ImportYoutubeRequest, bg_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     sb = get_supabase()
     _check_notebook_owner(sb, req.notebook_id, user["user_id"])
     text = extract_text_from_youtube(req.url)
     from app.services.knowledge_extractor import extract_knowledge
     structured = await extract_knowledge(text)
-    return _save_source(req.notebook_id, "youtube", req.url, text, structured)
+    result = _save_source(req.notebook_id, "youtube", req.url, text, structured)
+    bg_tasks.add_task(process_source, result["source"]["id"], req.notebook_id, text)
+    return result
 
 @router.post("/paste")
-async def paste_text(req: PasteTextRequest, user: dict = Depends(get_current_user)):
+async def paste_text(req: PasteTextRequest, bg_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     sb = get_supabase()
     _check_notebook_owner(sb, req.notebook_id, user["user_id"])
     from app.services.knowledge_extractor import extract_knowledge
     structured = await extract_knowledge(req.content)
-    return _save_source(req.notebook_id, "paste", req.title, req.content, structured)
+    result = _save_source(req.notebook_id, "paste", req.title, req.content, structured)
+    bg_tasks.add_task(process_source, result["source"]["id"], req.notebook_id, req.content)
+    return result
 
 @router.delete("/{source_id}")
 async def delete_source(source_id: str, user: dict = Depends(get_current_user)):

@@ -1,0 +1,154 @@
+# MAES — Phased Implementation Plan
+
+This implementation plan is structured into three distinct phases based on the current state of the codebase relative to the IEEE TLT Blueprint.
+
+---
+
+## Phase 1: Done (To be double-checked)
+*These features are implemented and functional in the current codebase. The goal in this phase is to double-check their stability, ensure they don't break during subsequent phases, and verify they meet baseline requirements.*
+
+### Backend & Orchestration
+- **Agent A (Teacher):** Generates Socratic hints using Mistral Large.
+  - *Check:* Verify JSON output parsing and prompt adherence.
+- **Agent B (Auditor):** Enforces pedagogical rubrics.
+  - *Check:* Verify rubric scoring logic and correction notes.
+- **Agent S (Fallback):** OpenRouter Mistral 7B fallback.
+  - *Check:* Ensure it can be invoked manually or dynamically.
+- **Orchestration Utils:** JSON repair/validation and knowledge extraction.
+  - *Check:* Test with edge-case LLM outputs.
+- **Source Processor:** PDF, URL, and YouTube text extraction.
+  - *Check:* Verify extraction quality and handle rate limits.
+
+### API Routes
+- **Session Management:** `POST /session/start` and `POST /session/end`.
+  - *Check:* Verify session lifecycle in DB.
+- **Chat Turn Pipeline:** `POST /turn/`.
+  - *Check:* Test end-to-end latency.
+- **Notebooks & Sources CRUD:** Endpoints for managing contexts.
+  - *Check:* Test creation, retrieval, and deletion.
+- **Studio Endpoints:** Flashcard and Quiz generation.
+  - *Check:* Validate generated JSON structures.
+- **Audit Dashboard API:** Retrieval of session logs.
+  - *Check:* Verify accurate data fetching.
+
+### Database & State
+- **Upstash Redis:** Session state caching.
+  - *Check:* Verify TTL and cache invalidation.
+- **Neon DB (`audit_logs`):** Logging pedagogical events.
+  - *Check:* Verify connection stability and write speeds.
+
+### Frontend
+- **Notebook List (Dashboard):** Main landing page.
+  - *Check:* Test responsiveness and data loading.
+- **3-Panel Workspace:** Sources, Chat, and Studio panels.
+  - *Check:* Verify UI layout and state management.
+
+---
+
+## Phase 2: Partial (To be corrected and checked)
+*These features exist in the codebase but are incomplete, buggy, or diverge from the blueprint. The goal in this phase is to fix bugs, align the schemas, and complete the partial implementations.*
+
+### Critical Bug Fixes
+- **Dependency Issues:** Uncomment `asyncpg`, add `pymupdf`, remove unused `pypdf` in `requirements.txt`.
+- **Async Blocking:** Replace sync `requests` with async `httpx` in URL extraction. Wrap synchronous Supabase client calls to avoid blocking the event loop in `turn.py`.
+- **Connection Exhaustion:** Implement `asyncpg.create_pool()` in Neon client to prevent connection drops.
+- **Task Management:** Replace fire-and-forget `asyncio.create_task` with FastAPI's `BackgroundTasks` in the orchestrator.
+- **Data Linkage:** Fix `create_session` to correctly pass and link `notebook_id`.
+- **Security:** Fix JWT decoding in `auth.py` to actually verify signatures rather than just parsing unverified claims.
+
+### Architecture Corrections
+- **LangGraph Orchestrator:**
+  - *Task:* Expand the current `A → B → revise` loop to support 3 revisions max.
+  - *Task:* Add routing logic for `PEER_REQUIRED` and `DVS_REQUIRED`.
+- **State Management (`TutoringState`):**
+  - *Task:* Expand `TurnState` to include `chronometric_load_score`, `bloom_stall_count`, `active_misconception`, and loop counts.
+- **Prompt Injection Defense:**
+  - *Task:* Actually integrate the existing `sanitizer.py` into the input pipeline.
+
+### Database Schema Alignment
+- **Supabase (`sessions`):**
+  - *Task:* Align with blueprint (change `student_id` to UUID, add `title` and `status`).
+- **Supabase (`learner_models`):**
+  - *Task:* Add missing fields (`dominant_bloom`, `preferred_register`, `overall_level`).
+- **Supabase (`sources`):**
+  - *Task:* Align schema to handle chunked documents for RAG.
+
+### Frontend Corrections
+- **Authentication:**
+  - *Task:* Remove the hardcoded demo bypass in `App.tsx` and `LoginPage.tsx`. Enable real Supabase Auth flow.
+- **Component Decomposition:**
+  - *Task:* Split the monolithic 1300-line `NotebookView.tsx` into smaller, maintainable components (`ChatPanel`, `SourcesPanel`, `StudioPanel`, etc.).
+
+---
+
+## Phase 3: Missing (To be implemented)
+*These features are entirely unbuilt but are core to the MAES blueprint. The goal in this phase is to build them from scratch.*
+
+### Advanced Pedagogical Agents
+- **Agent P (Peer):**
+  - *Task:* Build epistemic conflict generator based on misconception seeds.
+- **Pedagogical Scripting:**
+  - *Task:* Generate concept graphs, prerequisite maps, and misconception seeds during source ingestion.
+
+### CCLI Engine & Adaptive Gates
+- **CCLI Web Worker:**
+  - *Task:* Build frontend keystroke tracker (IKI, backspace frequency, pauses).
+- **Chronometric Payload:**
+  - *Task:* Send CLS metrics with every chat request.
+- **Chronometric Adaptive Gate (CAG):**
+  - *Task:* Integrate CLS metrics into Agent B to relax or tighten scaffolding based on cognitive load.
+
+### RAG Pipeline (Vector Search)
+- **Vector Database:**
+  - *Task:* Enable `pgvector` in Supabase and create `document_embeddings` table.
+- **Chunking & Embedding:**
+  - *Task:* Build service to chunk sources (512 tokens) and generate embeddings.
+- **Retrieval:**
+  - *Task:* Integrate vector similarity search into Agent A's context window.
+
+### Dynamic Visual Scaffolding (DVS)
+- **DVS Generator:**
+  - *Task:* Build backend service to generate SVG/HTML visuals when students stall.
+- **Frontend DVS Viewer:**
+  - *Task:* Build React component to render inline visuals inside the chat stream.
+
+### Streaming & Real-Time UX
+- **SSE Streaming:**
+  - *Task:* Convert `/turn/` to use `StreamingResponse` (`text/event-stream`).
+- **Frontend Stream Consumption:**
+  - *Task:* Update chat UI to render streaming tokens and intermediate agent thinking states.
+
+### Missing Dashboards & Telemetry
+- **Misconception Tracking (GCD):**
+  - *Task:* Create `gcd_profiles` table and tracking service to feed Agent P.
+- **Pedagogy Metrics:**
+  - *Task:* Create Neon tables for `pedagogy_metrics` and `dvs_events`.
+- **Visualizations:**
+  - *Task:* Build Bloom radar chart (6-axis), CLS heatmap, and GCD timeline in the frontend.
+- **Teacher Dashboard:**
+  - *Task:* Build analytics views for instructors.
+- **Study Guides & Simulations:**
+  - *Task:* Implement the 501 stubbed endpoints for adversarial simulation and guide generation.
+
+### Design System
+- **Blueprint Styling:**
+  - *Task:* Replace brutalist terminal theme with the blueprint's indigo/emerald design tokens, typography, and agent bubble colors.
+
+---
+
+## LLM Model Recommendation
+
+For the free-tier implementation, I highly recommend standardizing on the following:
+- **Agents A, B, and P:** Google Gemini 2.0 Flash (Massive free tier of 1.5M tokens/day, 1M context window, native JSON mode).
+- **Studio (Flashcards/Quizzes):** Groq Llama 3.1 8B (Extremely fast, free 14K tokens/min).
+- **Fallback:** OpenRouter Mistral 7B.
+
+---
+
+## Open Questions for the User
+
+1. **Scope Priority:** Do you want to execute all three phases, or just stop after Phase 2 (which gives a highly stable, but basic tutor)?
+2. **LLM Provider:** Do you approve the switch to Gemini 2.0 Flash for the main pedagogical agents?
+3. **Embedding Provider:** For Phase 3 RAG, should we use Google Gemini Embeddings (free) or another provider?
+4. **Auth Mode:** In Phase 2, do you want to strictly enforce real Supabase email/password auth, or keep a demo bypass available for testing?
+5. **Design Language:** Do you want to redesign the UI to the clean Indigo/Emerald blueprint aesthetic, or keep the dark terminal theme?

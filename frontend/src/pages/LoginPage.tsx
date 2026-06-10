@@ -1,94 +1,127 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ShieldAlert } from 'lucide-react';
+import { BookOpenCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setMessage('');
     const { error } = await supabase.auth.signInWithOtp({ email });
     if (error) {
       setMessage(error.message);
+      setIsSuccess(false);
     } else {
-      setMessage('Secure access link sent to your email.');
+      setMessage(`A magic sign-in link has been sent to ${email}. Check your inbox.`);
+      setIsSuccess(true);
     }
     setLoading(false);
   };
 
-  const handleDemoLogin = () => {
+  const handleGuestAccess = () => {
     localStorage.setItem('maes_demo_session', JSON.stringify({
-      user: {
-        id: '123e4567-e89b-12d3-a456-426614174000',
-        email: 'student@edu.org',
-        user_metadata: { name: 'Demo Student' }
-      },
-      access_token: 'eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwgInJvbGUiOiAiZGVtbyJ9.abcdefg123456789'
+      user: { id: 'demo-user-123', email: 'guest@maes.local' }
     }));
     window.dispatchEvent(new Event('maes_auth_change'));
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-canvas p-4">
-      <div className="panel-container w-full max-w-md bg-canvas">
-        <div className="flex flex-col items-center mb-8">
-          <div className="bg-brand text-canvas p-4 mb-4">
-            <ShieldAlert size={48} />
-          </div>
-          <h1 className="text-2xl font-bold text-brand uppercase tracking-widest text-center">
-            Socratic Pedagogy Platform
-          </h1>
-          <p className="text-ink font-mono mt-2 uppercase text-sm font-semibold tracking-wider">
-            Socratic Protocol Initiated
-          </p>
+    <div className="login-page">
+      <div className="login-card">
+        {/* Logo */}
+        <div className="login-logo">
+          <BookOpenCheck size={28} />
         </div>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-ink font-bold uppercase text-xs tracking-wider">
-              Student Email
+        {/* Title */}
+        <h1 className="login-title">MAES Learning</h1>
+        <p className="login-subtitle">Adaptive AI tutoring powered by Socratic dialogue</p>
+
+        {/* Login Form */}
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+            <label className="pref-label" htmlFor="email">
+              Email address
             </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="border border-ink bg-transparent p-3 text-ink font-mono focus:outline-none focus:ring-1 focus:ring-brand"
-              placeholder="student@edu.org"
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <Mail
+                size={16}
+                style={{
+                  position: 'absolute', left: '0.875rem', top: '50%',
+                  transform: 'translateY(-50%)', color: 'var(--stone-400)'
+                }}
+              />
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input"
+                style={{ paddingLeft: '2.5rem' }}
+                placeholder="you@university.edu"
+                required
+              />
+            </div>
           </div>
-          
-          <button type="submit" className="btn-alert mt-4 uppercase tracking-widest" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Request Access Link'}
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-full"
+            style={{ marginTop: '0.25rem' }}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                Sending link...
+              </>
+            ) : (
+              <>
+                Send Sign-In Link
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </form>
 
-        <div className="flex flex-col gap-2 mt-4">
-          <div className="flex items-center gap-2">
-            <div className="h-px bg-ink/20 flex-1"></div>
-            <span className="text-[10px] font-mono uppercase text-ink/40">Offline Bypass</span>
-            <div className="h-px bg-ink/20 flex-1"></div>
-          </div>
-          
-          <button 
-            type="button" 
-            onClick={handleDemoLogin} 
-            className="btn-primary uppercase tracking-widest text-xs py-3 text-center"
-          >
-            Enter Demo Access Mode
-          </button>
-        </div>
-        
+        {/* Feedback Message */}
         {message && (
-          <div className="mt-6 p-3 border-l-4 border-alert bg-canvas text-ink font-mono text-sm font-medium">
-            &gt; SYSTEM MESSAGE: {message}
+          <div style={{
+            marginTop: '1rem',
+            padding: '0.875rem 1rem',
+            borderRadius: 'var(--radius)',
+            background: isSuccess ? 'var(--green-100)' : 'var(--error-light)',
+            border: `1px solid ${isSuccess ? 'var(--green-300)' : 'rgba(192,57,43,0.25)'}`,
+            color: isSuccess ? 'var(--green-800)' : 'var(--error)',
+            fontSize: '0.875rem',
+            lineHeight: 1.5,
+          }}>
+            {message}
           </div>
         )}
+
+        {/* Divider */}
+        <div className="login-divider">or</div>
+
+        {/* Guest Access */}
+        <button
+          type="button"
+          onClick={handleGuestAccess}
+          className="btn btn-secondary btn-full"
+        >
+          <Sparkles size={16} />
+          Continue as Guest
+        </button>
+
+        <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--stone-400)', marginTop: '1.25rem', lineHeight: 1.6 }}>
+          Guest mode stores data locally. Sign in with your email to sync across devices and access full features.
+        </p>
       </div>
     </div>
   );
 }
-
