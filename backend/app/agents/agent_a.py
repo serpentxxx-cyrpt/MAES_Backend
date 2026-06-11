@@ -77,13 +77,14 @@ async def run_agent_a(state: dict) -> dict:
     
     # Log to Neon
     from app.db.neon_client import log_event
-    hint_text = draft.get("hint_text", "")
+    is_revision = "AUDIT CORRECTION" in correction_note
+    log_text = "Agent A: Drafted revised response based on Agent B feedback." if is_revision else "Agent A: Drafted initial Socratic response based on conversation history."
     await log_event(
         session_id=state.get("session_id", ""),
         student_id=state.get("student_id", ""),
-        event_type="agent_a_draft",
-        text=f"Tutor generated draft hint: {hint_text[:50]}...",
-        status="pending"
+        event_type="agent_a",
+        text=log_text,
+        status="agent"
     )
     
     return {**state, "agent_a_draft": draft}

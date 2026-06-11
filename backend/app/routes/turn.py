@@ -105,6 +105,27 @@ async def process_turn(
             # Status: Agent A thinking
             yield f"event: status\ndata: {json.dumps({'msg': 'Agent A is composing a response...'})}\n\n"
             
+            from app.db.neon_client import log_event
+            
+            # Log CCLI
+            load_label = "High Load" if req.chronometric_load_score > 0.7 else "Normal Load"
+            await log_event(
+                session_id=req.session_id,
+                student_id=context.get("student_id", ""),
+                event_type="ccli",
+                text=f"CCLI: Analyzed passive chronometric typing load score: {req.chronometric_load_score:.2f} ({load_label}).",
+                status="info"
+            )
+            
+            # Log Orchestrator Start
+            await log_event(
+                session_id=req.session_id,
+                student_id=context.get("student_id", ""),
+                event_type="orchestrator",
+                text="LangGraph Orchestrator: Initiating LangGraph pedagogical state machine.",
+                status="info"
+            )
+            
             # Run orchestrator graph
             final_state = await graph.ainvoke(initial_state)
             
@@ -141,6 +162,16 @@ async def process_turn(
                 hint = streamed_hint if streamed_hint else hint
             except Exception as e:
                 logger.error(f"[TURN] Groq streaming failed, falling back to non-streamed: {e}")
+                
+                from app.db.neon_client import log_event
+                await log_event(
+                    session_id=req.session_id,
+                    student_id=context.get("student_id", ""),
+                    event_type="fallback",
+                    text="Fallback LLM: Triggered due to generation timeout or streaming failure.",
+                    status="alert"
+                )
+                
                 # Fallback: send hint as single token
                 yield f"event: token\ndata: {json.dumps({'token': hint})}\n\n"
 
@@ -159,6 +190,14 @@ async def process_turn(
             # Log pedagogy metrics to Neon
             from app.db.neon_client import get_neon_pool
             try:
+                await log_event(
+                    session_id=req.session_id,
+                    student_id=context.get("student_id", ""),
+                    event_type="dashboard",
+                    text="Instructor Telemetry Dashboard: Syncing session metrics to Instructor Telemetry Dashboard.",
+                    status="info"
+                )
+                
                 pool = get_neon_pool()
                 async with pool.acquire() as conn:
                     await conn.execute("""
@@ -218,6 +257,16 @@ async def _detect_misconception_bg(session_id: str, student_id: str, message: st
     """Helper to call GCD service as a background task."""
     try:
         from app.services.gcd_service import detect_and_log_misconception
+        from app.db.neon_client import log_event
+        
         await detect_and_log_misconception(session_id, student_id, message, bloom_tag)
+        
+        await log_event(
+            session_id=session_id,
+            student_id=student_id,
+            event_type="gcd",
+            text="GCD: Background cognitive diagnosis completed. Active misconceptions updated.",
+            status="success"
+        )
     except Exception as e:
         logger.error(f"[TURN-BG] GCD detection failed: {e}")

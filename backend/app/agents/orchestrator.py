@@ -25,6 +25,7 @@ class TurnState(TypedDict):
     bloom_stall_count: int
     active_misconception: Optional[str]
     audit_logs_to_dispatch: list[dict]
+    telemetry_events: list[dict]
     # Phase 3 additions
     dvs_payload: Optional[str]
     peer_challenge: bool
@@ -55,6 +56,16 @@ async def inject_correction_and_log(state: TurnState) -> TurnState:
     b = state["agent_b_result"]
     a = state["agent_a_draft"]
     
+    from app.db.neon_client import log_event
+    decision = b.get("decision", "APPROVE")
+    await log_event(
+        session_id=state.get("session_id", ""),
+        student_id=state.get("student_id", ""),
+        event_type="orchestrator",
+        text=f"LangGraph Orchestrator: Routing turn based on Agent B decision -> {decision}.",
+        status="info"
+    )
+
     # Append log entry to state instead of firing an uncontrolled task
     logs = state.get("audit_logs_to_dispatch", [])
     logs.append({
@@ -88,7 +99,8 @@ async def inject_correction_and_log(state: TurnState) -> TurnState:
             "struggle_level": b.get("struggle_level")
         },
         "loop_count": state.get("loop_count", 0) + 1,
-        "audit_logs_to_dispatch": logs
+        "audit_logs_to_dispatch": logs,
+        "telemetry_events": state.get("telemetry_events", [])
     }
 
 def build_graph():

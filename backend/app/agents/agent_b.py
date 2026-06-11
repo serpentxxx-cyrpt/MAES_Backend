@@ -60,4 +60,25 @@ async def run_agent_b(state: dict) -> dict:
     )
 
     result = repair_and_parse_json(response.choices[0].message.content)
+
+    from app.db.neon_client import log_event
+    decision = result.get("decision", "APPROVE")
+    
+    if decision == "PEER_REQUIRED":
+        log_text = "Agent B: Evaluated draft. Detected cognitive struggle (Bloom stall). Routing to Peer Agent."
+    elif decision == "DVS_REQUIRED":
+        log_text = "Agent B: Evaluated draft. Detected high cognitive load. Routing to DVS Generator."
+    elif decision == "REQUEST_REVISION":
+        log_text = "Agent B: Evaluated draft. Did not meet rubric standards. Requesting revision."
+    else:
+        log_text = "Agent B: Evaluated and approved draft response."
+
+    await log_event(
+        session_id=state.get("session_id", ""),
+        student_id=state.get("student_id", ""),
+        event_type="agent_b",
+        text=log_text,
+        status="agent"
+    )
+
     return {**state, "agent_b_result": result}

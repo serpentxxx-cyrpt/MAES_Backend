@@ -63,9 +63,9 @@ async def run_agent_p(state: dict) -> dict:
     await log_event(
         session_id=state.get("session_id", ""),
         student_id=state.get("student_id", ""),
-        event_type="agent_p_challenge",
-        text=f"Peer challenge generated targeting: {active_misconception[:60]}",
-        status="pending"
+        event_type="agent_p",
+        text=f"Agent P: Formulated Misconception-Targeted Epistemic Conflict (MTECG) to address '{active_misconception[:50]}'.",
+        status="agent"
     )
     
     # Store in agent_a_draft format so Agent B can evaluate it uniformly

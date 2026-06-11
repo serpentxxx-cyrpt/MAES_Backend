@@ -896,6 +896,15 @@ a:hover { color: var(--green-600); }
 }
 .log-event-badge.approved { background: rgba(74,124,89,0.3); color: #A0D4B0; }
 .log-event-badge.rejected { background: rgba(192,57,43,0.3); color: #F5A19A; }
+.log-event-badge.agent_a { background: rgba(124,77,255,0.25); color: #C5B3FF; }
+.log-event-badge.agent_b { background: rgba(63,81,181,0.25); color: #9FA8DA; }
+.log-event-badge.agent_p { background: rgba(156,39,176,0.25); color: #CE93D8; }
+.log-event-badge.ccli { background: rgba(33,150,243,0.25); color: #90CAF9; }
+.log-event-badge.orchestrator { background: rgba(158,158,158,0.25); color: #E0E0E0; }
+.log-event-badge.gcd { background: rgba(0,150,136,0.25); color: #80CBC4; }
+.log-event-badge.dvs { background: rgba(76,175,80,0.25); color: #A5D6A7; }
+.log-event-badge.fallback { background: rgba(255,152,0,0.25); color: #FFCC80; }
+.log-event-badge.dashboard { background: rgba(96,125,139,0.25); color: #B0BEC5; }
 .log-text { color: rgba(160,212,176,0.75); flex: 1; word-break: break-word; }
 .log-cursor { color: var(--green-400); animation: pulse 1s infinite; font-weight: 700; }
 
