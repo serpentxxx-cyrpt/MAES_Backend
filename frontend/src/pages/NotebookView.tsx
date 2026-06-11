@@ -646,7 +646,7 @@ export default function NotebookView() {
 
                   return (
                     <div key={idx} className="log-entry">
-                      <span className="log-time">{log.time || new Date(log.created_at || Date.now()).toLocaleTimeString()}</span>
+                      <span className="log-time">{log.time || (log.created_at ? new Date(log.created_at).toLocaleTimeString() : '')}</span>
                       <span className={`log-event-badge ${badgeClass}`}>
                         {badgeText}
                       </span>
