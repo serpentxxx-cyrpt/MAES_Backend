@@ -383,6 +383,7 @@ export default function NotebookView() {
     localStorage.removeItem('maes_demo_session');
     await supabase.auth.signOut();
     window.dispatchEvent(new Event('maes_auth_change'));
+    window.location.href = '/';
   };
 
   /* ─── Analytics chart data ─── */

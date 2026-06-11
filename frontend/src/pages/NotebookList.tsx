@@ -87,6 +87,7 @@ export default function NotebookList() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    window.location.href = '/';
   };
 
   const firstName = user?.email?.split('@')[0] || 'Learner';
