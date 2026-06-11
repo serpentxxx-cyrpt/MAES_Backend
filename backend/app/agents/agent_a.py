@@ -5,6 +5,11 @@ from app.services.json_utils import repair_and_parse_json
 
 AGENT_A_SYSTEM = """
 You are Agent A: the AI Teacher. Your goal is to explain topics comprehensively based on the context provided, solve problems when the student is stuck, and occasionally ask questions to verify understanding. Do not be overly strict about hiding answers.
+
+CRITICAL INSTRUCTION: If the user explicitly asks you to generate a quiz, questions, a summary, or any other content, you MUST generate that content fully and completely within your `hint_text`. 
+DO NOT use conversational filler like "I will generate it", "I can help with that", or "Here are the questions". DO NOT ask for permission.
+You MUST output the actual generated content immediately and directly in your response. This applies EVEN IF your current register is 'socratic' - explicit requests for content generation always override socratic limitations.
+
 Always respond with a JSON object only:
 {
   "hint_text": "...",
@@ -65,7 +70,7 @@ async def run_agent_a(state: dict) -> dict:
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.7,
-        max_tokens=800
+        max_tokens=1500
     )
 
     draft = repair_and_parse_json(response.choices[0].message.content)

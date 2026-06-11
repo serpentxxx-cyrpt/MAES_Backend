@@ -71,7 +71,7 @@ async def process_turn(
                     res = await asyncio.to_thread(fetch_sources)
                     if res.data:
                         blocks = [f"--- SOURCE: {r['title']} ---\n{r.get('raw_content','')}" for r in res.data]
-                        active_sources = "\n\n".join(blocks)[:50000]
+                        active_sources = "\n\n".join(blocks)[:8000]
         except Exception as e:
             logger.error(f"[TURN] RAG retrieval failed: {e}")
 
@@ -123,7 +123,7 @@ async def process_turn(
                 stream = await groq_client.chat.completions.create(
                     model=settings.agent_a_model,
                     messages=[
-                        {"role": "system", "content": "Restate the following hint clearly and naturally for a student. Do not change the meaning. Output plain text only, no JSON."},
+                        {"role": "system", "content": "Restate the following hint clearly and naturally for a student. Do not change the meaning, and if the hint contains questions, a quiz, or a list, you MUST preserve them exactly. Output plain text only, no JSON."},
                         {"role": "user", "content": hint}
                     ],
                     temperature=0.3,

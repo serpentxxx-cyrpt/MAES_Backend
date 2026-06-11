@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     mistral_api_key: str
     
     # Component 1 deviation: Groq for A, Mistral for B & P
-    agent_a_model: str = "llama-3.3-70b-versatile"
+    agent_a_model: str = "llama-3.1-8b-instant"
     agent_b_model: str = "mistral-large-latest"
     agent_p_model: str = "mistral-large-latest"
     fallback_model: str = "mistralai/mistral-7b-instruct"

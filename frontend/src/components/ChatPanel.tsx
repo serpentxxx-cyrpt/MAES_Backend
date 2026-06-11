@@ -1,7 +1,7 @@
 /**
  * ChatPanel — AI Tutor Conversation (Phase 3)
  * - CCLI keystroke tracking
- * - SSE streaming consumption
+ * - SSE streaming consumption (fixed event-based parsing)
  * - DVS Concept Diagram rendering
  * - Peer Perspective bubbles
  */
@@ -31,6 +31,7 @@ interface ChatPanelProps {
   chatBottomRef: React.RefObject<HTMLDivElement | null>;
   onCLSUpdate?: (cls: number) => void;
   authToken?: string;
+  isOnline?: boolean;
 }
 
 const REGISTER_LABELS: Record<string, string> = {
@@ -61,6 +62,7 @@ export default function ChatPanel({
   chatBottomRef,
   onCLSUpdate,
   authToken,
+  isOnline = true,
 }: ChatPanelProps) {
   const { cls, resetCLS, onKeyDown } = useCCLI();
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -105,7 +107,10 @@ export default function ChatPanel({
         signal: abortRef.current.signal,
       });
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errText}`);
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
@@ -114,6 +119,7 @@ export default function ChatPanel({
       let buffer = '';
       let streamedText = '';
       let dvsPending: string | null = null;
+      let currentEvent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -123,60 +129,86 @@ export default function ChatPanel({
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const rawData = line.slice(6);
-          if (!rawData) continue;
-          try {
-            const data = JSON.parse(rawData);
-            if ('msg' in data) {
-              setStatusMsg(data.msg);
-            } else if ('token' in data) {
-              streamedText += data.token;
-              setMessages(prev => {
-                const updated = [...prev];
-                const lastTutor = [...updated].reverse().findIndex(m => m.role === 'tutor');
-                if (lastTutor >= 0) {
-                  const idx = updated.length - 1 - lastTutor;
-                  updated[idx] = { ...updated[idx], text: streamedText, streaming: true };
+          if (line.startsWith('event: ')) {
+            // Track which event type the next data line belongs to
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const rawData = line.slice(6).trim();
+            if (!rawData) continue;
+            try {
+              const data = JSON.parse(rawData);
+
+              if (currentEvent === 'status' || 'msg' in data) {
+                setStatusMsg(data.msg);
+              } else if (currentEvent === 'token' || 'token' in data) {
+                streamedText += data.token;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastTutor = [...updated].reverse().findIndex(m => m.role === 'tutor');
+                  if (lastTutor >= 0) {
+                    const idx = updated.length - 1 - lastTutor;
+                    updated[idx] = { ...updated[idx], text: streamedText, streaming: true };
+                  }
+                  return updated;
+                });
+                chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+              } else if (currentEvent === 'dvs' || 'svg' in data) {
+                dvsPending = data.svg;
+              } else if (currentEvent === 'done' || 'bloom_tag' in data) {
+                const finalBloom = data.bloom_tag;
+                const finalReg = data.register;
+                const isPeer = data.peer_challenge;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastTutor = [...updated].reverse().findIndex(m => m.role === 'tutor');
+                  if (lastTutor >= 0) {
+                    const idx = updated.length - 1 - lastTutor;
+                    updated[idx] = { ...updated[idx], text: streamedText, bloom_tag: finalBloom, streaming: false, role: isPeer ? 'peer' : 'tutor' };
+                  }
+                  return updated;
+                });
+                if (dvsPending) {
+                  setMessages(prev => [...prev, { role: 'dvs', text: '', dvs_payload: dvsPending! }]);
+                  dvsPending = null;
                 }
-                return updated;
-              });
-              chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-            } else if ('svg' in data) {
-              dvsPending = data.svg;
-            } else if ('bloom_tag' in data) {
-              const finalBloom = data.bloom_tag;
-              const finalReg = data.register;
-              const isPeer = data.peer_challenge;
-              setMessages(prev => {
-                const updated = [...prev];
-                const lastTutor = [...updated].reverse().findIndex(m => m.role === 'tutor');
-                if (lastTutor >= 0) {
-                  const idx = updated.length - 1 - lastTutor;
-                  updated[idx] = { ...updated[idx], text: streamedText, bloom_tag: finalBloom, streaming: false, role: isPeer ? 'peer' : 'tutor' };
-                }
-                return updated;
-              });
-              if (dvsPending) {
-                setMessages(prev => [...prev, { role: 'dvs', text: '', dvs_payload: dvsPending! }]);
-                dvsPending = null;
+                if (finalReg) setCurrentRegister(finalReg);
+                setStatusMsg(null);
+              } else if (currentEvent === 'error' || 'error' in data) {
+                const errMsg = data.error || 'An error occurred during response generation.';
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastTutor = [...updated].reverse().findIndex(m => m.role === 'tutor');
+                  if (lastTutor >= 0) {
+                    const idx = updated.length - 1 - lastTutor;
+                    updated[idx] = { ...updated[idx], text: `[Error: ${errMsg}]`, streaming: false };
+                  }
+                  return updated;
+                });
+                setStatusMsg(null);
               }
-              if (finalReg) setCurrentRegister(finalReg);
-              setStatusMsg(null);
-            } else if ('error' in data) {
-              setStatusMsg('Error: ' + data.error);
-            }
-          } catch { /* skip malformed lines */ }
+            } catch { /* skip malformed lines */ }
+            // Reset event tracker after consuming data
+            currentEvent = '';
+          } else if (line === '') {
+            // blank line resets the event tracking per SSE spec
+            currentEvent = '';
+          }
         }
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
+        console.error('[ChatPanel] SSE error:', err.message);
         setMessages(prev => {
           const updated = [...prev];
           const lastTutor = [...updated].reverse().findIndex(m => m.role === 'tutor');
           if (lastTutor >= 0) {
             const idx = updated.length - 1 - lastTutor;
-            updated[idx] = { ...updated[idx], text: "I'm having trouble connecting. Please try again.", streaming: false };
+            const errMsg = err.message?.includes('401')
+              ? "Authentication failed. Please refresh the page and try again."
+              : err.message?.includes('404')
+              ? "Session expired. Please click 'End Session' then 'Start Session' to begin again."
+              : "I'm having trouble connecting. Please try again.";
+            updated[idx] = { ...updated[idx], text: errMsg, streaming: false };
           }
           return updated;
         });
@@ -203,9 +235,13 @@ export default function ChatPanel({
               🧠 High load
             </span>
           )}
-          {sessionId && (
-            <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>
-              <Wifi size={10} /> Live
+          {sessionId ? (
+            <span className={`badge ${isOnline ? 'badge-green' : 'badge-stone'}`} style={{ fontSize: '0.65rem' }}>
+              <Wifi size={10} style={{ opacity: isOnline ? 1 : 0.5 }} /> {isOnline ? 'Live' : 'Disconnected'}
+            </span>
+          ) : (
+            <span className="badge badge-stone" style={{ fontSize: '0.65rem' }}>
+              <Wifi size={10} style={{ opacity: 0.5 }} /> Offline
             </span>
           )}
         </div>

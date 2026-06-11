@@ -25,7 +25,7 @@ export default function LoginPage() {
 
   const handleGuestAccess = () => {
     localStorage.setItem('maes_demo_session', JSON.stringify({
-      user: { id: 'demo-user-123', email: 'guest@maes.local' }
+      user: { id: '123e4567-e89b-12d3-a456-426614174000', email: 'guest@maes.local' }
     }));
     window.dispatchEvent(new Event('maes_auth_change'));
   };

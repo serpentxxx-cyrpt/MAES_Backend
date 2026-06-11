@@ -62,6 +62,9 @@ export default function NotebookView() {
   const [chatLoading, setChatLoading] = useState(false);
   const [inputText, setInputText] = useState('');
   const [currentRegister, setCurrentRegister] = useState('socratic');
+
+  // Auth state - resolved together to avoid race conditions
+  const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [authToken, setAuthToken] = useState<string | undefined>();
 
@@ -107,24 +110,39 @@ export default function NotebookView() {
   const [preferredRegister, setPreferredRegister] = useState('socratic');
   const [sessionTtl, setSessionTtl] = useState(30);
 
+  /* ── Connectivity ── */
+  const [isOnline, setIsOnline] = useState(true);
+
   /* ═══ Effects ═══ */
+
+  // Step 1: Resolve auth FIRST, then mark ready
   useEffect(() => {
-    const fetchUser = async () => {
+    const resolveAuth = async () => {
       try {
         const { data: { user: sbUser } } = await supabase.auth.getUser();
-        if (sbUser) { setUser(sbUser); }
-        else {
-          const demo = localStorage.getItem('maes_demo_session');
-          if (demo) setUser(JSON.parse(demo).user);
-        }
         const { data: { session } } = await supabase.auth.getSession();
-        if (session) setAuthToken(session.access_token);
+
+        if (sbUser && session) {
+          setUser(sbUser);
+          setAuthToken(session.access_token);
+        } else {
+          const demo = localStorage.getItem('maes_demo_session');
+          if (demo) {
+            setUser(JSON.parse(demo).user);
+            setAuthToken('DEMO_USER_TOKEN');
+          }
+        }
       } catch {
         const demo = localStorage.getItem('maes_demo_session');
-        if (demo) setUser(JSON.parse(demo).user);
+        if (demo) {
+          setUser(JSON.parse(demo).user);
+          setAuthToken('DEMO_USER_TOKEN');
+        }
+      } finally {
+        setAuthReady(true);
       }
     };
-    fetchUser();
+    resolveAuth();
     fetchNotebookDetails();
     fetchSources();
     loadNotes();
@@ -147,8 +165,25 @@ export default function NotebookView() {
   }, [activeView, sessionId]);
 
   useEffect(() => {
-    if (user && notebook && !sessionId) handleStartSession();
-  }, [user, notebook]);
+    const checkConnection = async () => {
+      try {
+        await api.get('/');
+        setIsOnline(true);
+      } catch {
+        setIsOnline(false);
+      }
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Step 2: Only start session AFTER auth is resolved (authReady + user + notebook)
+  useEffect(() => {
+    if (authReady && user && notebook && !sessionId) {
+      handleStartSession();
+    }
+  }, [authReady, user, notebook]);
 
   /* ═══ Data Fetching ═══ */
   const fetchNotebookDetails = async () => {
@@ -224,7 +259,7 @@ export default function NotebookView() {
   /* ═══ Session Handlers ═══ */
   const handleStartSession = async () => {
     try {
-      const studentId = user?.id || 'demo-user-123';
+      const studentId = user?.id || '123e4567-e89b-12d3-a456-426614174000';
       const domain = notebook?.domain || 'General Science';
       const { data } = await api.post('/session/start', { student_id: studentId, domain, notebook_id: notebookId });
       setSessionId(data.session_id);
@@ -234,6 +269,7 @@ export default function NotebookView() {
         bloom_tag: 'remember'
       }]);
     } catch {
+      // Offline fallback
       const sid = `sess-${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(sid);
       setMessages([{
@@ -421,7 +457,7 @@ export default function NotebookView() {
                 <StopCircle size={14} /> End Session
               </button>
             ) : (
-              <button onClick={handleStartSession} className="btn btn-primary btn-sm">
+              <button onClick={handleStartSession} className="btn btn-primary btn-sm" disabled={!authReady}>
                 <PlayCircle size={14} /> Start Session
               </button>
             )
@@ -456,6 +492,7 @@ export default function NotebookView() {
               setInputText={setInputText}
               chatBottomRef={chatBottomRef}
               authToken={authToken}
+              isOnline={isOnline}
             />
             <StudioPanel
               studioTab={studioTab}
@@ -785,7 +822,7 @@ export default function NotebookView() {
           {sessionId && <span>Session: {sessionId.slice(0, 8)}...</span>}
           <span>{sources.filter(s => s.isActive).length} sources active</span>
         </div>
-        <span>MAES · Adaptive AI Tutoring · v2.0</span>
+        <span>MAES · Adaptive AI Tutoring · v2.8</span>
       </footer>
     </div>
   );

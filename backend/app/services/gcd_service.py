@@ -1,17 +1,14 @@
 """
 GCD Service (Component 7): Generalized Conceptual Difficulty tracking
 Blueprint: detect misconceptions, log to gcd_profiles, feed Agent P.
-LLM: Gemini 2.0 Flash (approved for one-shot classification tasks)
+LLM: Groq Llama 3.3-70B (fallback from Gemini due to quota limits)
 """
 import logging
 import json
-from google import genai
-from google.genai import types
+from groq import AsyncGroq
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-
-gemini_client = genai.Client(api_key=settings.gemini_api_key)
 
 GCD_CLASSIFY_PROMPT = """You are a pedagogical misconception detector. Analyze the student's message and determine if it reveals a clear conceptual misconception.
 
@@ -32,23 +29,26 @@ async def detect_and_log_misconception(
     bloom_tag: str
 ) -> None:
     """
-    Uses Gemini to classify if the student message reveals a conceptual misconception.
+    Uses Groq to classify if the student message reveals a conceptual misconception.
     If detected, logs to gcd_profiles in Neon DB.
     Called as a BackgroundTask after each turn.
     """
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[GCD_CLASSIFY_PROMPT, f"Student message: \"{student_message}\"\nBloom level detected: {bloom_tag}"],
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=200
-            )
+        client = AsyncGroq(api_key=settings.groq_api_key)
+        response = await client.chat.completions.create(
+            model=settings.agent_a_model,
+            messages=[
+                {"role": "system", "content": GCD_CLASSIFY_PROMPT},
+                {"role": "user", "content": f"Student message: \"{student_message}\"\nBloom level detected: {bloom_tag}"}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=200
         )
-        
+
         from app.services.json_utils import repair_and_parse_json
-        result = repair_and_parse_json(response.text)
-        
+        result = repair_and_parse_json(response.choices[0].message.content)
+
         if result.get("has_misconception") and result.get("misconception_text"):
             # Log to Neon gcd_profiles
             try:
@@ -67,9 +67,9 @@ async def detect_and_log_misconception(
                 logger.info(f"[GCD] Misconception logged: {result['misconception_text'][:60]}")
             except Exception as e:
                 logger.error(f"[GCD] Failed to log misconception to Neon: {e}")
-    
+
     except Exception as e:
-        logger.error(f"[GCD] Gemini classification failed: {e}")
+        logger.error(f"[GCD] Groq classification failed: {e}")
 
 
 async def get_active_misconception(student_id: str) -> str | None:
@@ -87,11 +87,11 @@ async def get_active_misconception(student_id: str) -> str | None:
                 ORDER BY detected_at DESC
                 LIMIT 1
             """, student_id)
-        
+
         if row:
             return row["misconception_text"]
         return None
-    
+
     except Exception as e:
         logger.error(f"[GCD] Failed to fetch active misconception: {e}")
         return None
