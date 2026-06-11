@@ -12,11 +12,6 @@ api.interceptors.request.use(
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.access_token) {
         config.headers.set('Authorization', `Bearer ${session.access_token}`);
-      } else {
-        const demo = localStorage.getItem('maes_demo_session');
-        if (demo) {
-           config.headers.set('Authorization', `Bearer DEMO_USER_TOKEN`);
-        }
       }
     } catch (e) {
       console.warn("Could not retrieve Supabase session for API authentication header:", e);

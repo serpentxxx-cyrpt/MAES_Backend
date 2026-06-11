@@ -71,7 +71,7 @@ async def process_turn(
                     res = await asyncio.to_thread(fetch_sources)
                     if res.data:
                         blocks = [f"--- SOURCE: {r['title']} ---\n{r.get('raw_content','')}" for r in res.data]
-                        active_sources = "\n\n".join(blocks)[:8000]
+                        active_sources = "\n\n".join(blocks)[:3000]
         except Exception as e:
             logger.error(f"[TURN] RAG retrieval failed: {e}")
 
@@ -148,7 +148,7 @@ async def process_turn(
                         {"role": "user", "content": hint}
                     ],
                     temperature=0.3,
-                    max_tokens=600,
+                    max_tokens=1000,
                     stream=True
                 )
                 streamed_hint = ""

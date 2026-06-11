@@ -1,6 +1,5 @@
 from fastapi import Request, HTTPException, status
-from jose import jwt, JWTError, ExpiredSignatureError
-from app.config import settings
+from app.db.supabase_client import supabase
 
 def get_current_user(request: Request):
     """
@@ -18,21 +17,11 @@ def get_current_user(request: Request):
     
     token = auth_header.split(" ")[1]
     
-    # Guest mode bypass
-    if token == "DEMO_USER_TOKEN":
-        return {"user_id": "123e4567-e89b-12d3-a456-426614174000", "role": "authenticated"}
-    
-    # We will use python-jose to decode and verify the Supabase JWT.
-    # Supabase uses HS256 with the JWT secret.
-    # For dev/prototype we fetch claims without signature validation,
-    # but verify in production.
     try:
-        # Decode without verification for dev/prototype
-        payload = jwt.get_unverified_claims(token)
-        print(f"[AUTH DEBUG] Parsed unverified claims: {payload}")
-        
-        user_id = payload.get("sub")
-        role = payload.get("role", "authenticated")
+        # Validate token securely with Supabase API
+        user_response = supabase.auth.get_user(token)
+        user_id = user_response.user.id
+        role = user_response.user.role
         
         if not user_id:
             print("[AUTH DEBUG] sub claim missing from token")
@@ -40,12 +29,9 @@ def get_current_user(request: Request):
             
         return {"user_id": user_id, "role": role}
         
-    except ExpiredSignatureError as e:
-        print(f"[AUTH DEBUG] ExpiredSignatureError: {e}")
-        raise HTTPException(status_code=401, detail="Token expired")
-    except JWTError as e:
-        print(f"[AUTH DEBUG] JWTError: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        print(f"[AUTH DEBUG] AuthError: {e}")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def require_role(allowed_roles: list[str]):

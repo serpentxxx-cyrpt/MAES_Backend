@@ -12,7 +12,7 @@ You MUST output the actual generated content immediately and directly in your re
 
 Always respond with a JSON object only:
 {
-  "hint_text": "...",
+  "hint_text": "... (Keep your response concise, max 3-4 short paragraphs)",
   "internal_reasoning": "...",
   "estimated_bloom_level": "remember|understand|apply|analyze|evaluate|create"
 }

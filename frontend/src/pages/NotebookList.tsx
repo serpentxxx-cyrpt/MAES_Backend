@@ -45,13 +45,9 @@ export default function NotebookList() {
         const { data: { user: sbUser } } = await supabase.auth.getUser();
         if (sbUser) {
           setUser(sbUser);
-        } else {
-          const demoUser = localStorage.getItem('maes_demo_session');
-          if (demoUser) setUser(JSON.parse(demoUser).user);
         }
-      } catch {
-        const demoUser = localStorage.getItem('maes_demo_session');
-        if (demoUser) setUser(JSON.parse(demoUser).user);
+      } catch (e) {
+        console.error('Error fetching user profile', e);
       }
     };
     getProfile();
@@ -90,13 +86,11 @@ export default function NotebookList() {
   };
 
   const handleLogout = async () => {
-    localStorage.removeItem('maes_demo_session');
     await supabase.auth.signOut();
-    window.dispatchEvent(new Event('maes_auth_change'));
+    window.location.href = '/';
   };
 
   const firstName = user?.email?.split('@')[0] || 'Learner';
-  const isDemo = user?.email === 'guest@maes.local';
 
   return (
     <div className="notebooks-page">
@@ -121,10 +115,7 @@ export default function NotebookList() {
             fontWeight: 500,
           }}>
             <User size={14} />
-            {isDemo ? 'Guest' : (user?.email || 'Loading...')}
-            {isDemo && (
-              <span className="badge badge-stone" style={{ fontSize: '0.65rem' }}>Demo</span>
-            )}
+            {user?.email || 'Loading...'}
           </div>
 
           <button
