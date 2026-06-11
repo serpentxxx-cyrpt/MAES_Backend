@@ -1,5 +1,4 @@
 import json
-# pyrefly: ignore [missing-import]
 from openai import AsyncOpenAI
 from app.config import settings
 from app.services.json_utils import repair_and_parse_json
@@ -7,9 +6,16 @@ from app.services.json_utils import repair_and_parse_json
 
 AGENT_B_SYSTEM = """
 You are Agent B: the Pedagogical Auditor. Evaluate the teacher's draft response. Ensure the teacher explains concepts well based on context, helps solve problems, and occasionally asks questions. Do not penalize the tutor for revealing answers or explaining concepts directly.
+
+DECISION RULES:
+- If the student's chronometric_load_score > 0.7 (cognitively overloaded), set decision = "DVS_REQUIRED".
+- If the student's bloom_stall_count >= 3 (stuck at same Bloom level for 3+ turns), set decision = "PEER_REQUIRED".
+- If avg rubric score >= 3.5 AND correctness >= 4 and no DVS/PEER trigger: set decision = "APPROVE".
+- Otherwise: set decision = "REQUEST_REVISION".
+
 Return ONLY a valid JSON object with this exact structure:
 {
-  "decision": "APPROVE|REQUEST_REVISION|SWITCH_REGISTER",
+  "decision": "APPROVE|REQUEST_REVISION|PEER_REQUIRED|DVS_REQUIRED",
   "correction_note": "...",
   "register_switch": null,
   "struggle_level": "productive|stalled|null",
@@ -22,7 +28,6 @@ Return ONLY a valid JSON object with this exact structure:
     "bloom_alignment": 4
   }
 }
-Approve if avg score >= 3.5 AND correctness >= 4. Otherwise REQUEST_REVISION.
 """
 
 async def run_agent_b(state: dict) -> dict:
@@ -33,7 +38,11 @@ async def run_agent_b(state: dict) -> dict:
         "learner_model": state.get("learner_model", {}),
         "current_register": state.get("current_register", "socratic"),
         "turn_number": state.get("turn_number", 1),
-        "active_sources": state.get("active_sources", "")
+        "active_sources": state.get("active_sources", ""),
+        # Phase 3: CAG inputs
+        "chronometric_load_score": state.get("chronometric_load_score", 0.0),
+        "bloom_stall_count": state.get("bloom_stall_count", 0),
+        "active_misconception": state.get("active_misconception", None)
     }
 
     messages = [
@@ -43,7 +52,7 @@ async def run_agent_b(state: dict) -> dict:
 
     client = AsyncOpenAI(api_key=settings.mistral_api_key, base_url="https://api.mistral.ai/v1")
     response = await client.chat.completions.create(
-        model="mistral-large-latest",
+        model=settings.agent_b_model,
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.1,
@@ -52,4 +61,3 @@ async def run_agent_b(state: dict) -> dict:
 
     result = repair_and_parse_json(response.choices[0].message.content)
     return {**state, "agent_b_result": result}
-

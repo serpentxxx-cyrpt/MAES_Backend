@@ -1,34 +1,37 @@
 import io
 import re
-from pypdf import PdfReader
-import requests
+import fitz
+from fastapi import UploadFile
+import httpx
 from bs4 import BeautifulSoup
 from youtube_transcript_api import YouTubeTranscriptApi
-from fastapi import UploadFile
 
 async def extract_text_from_pdf(file: UploadFile) -> str:
-    """Extracts text from a PDF file using PyMuPDF (fitz)."""
-    import fitz
+    """Extracts text from a PDF file using pymupdf."""
     import logging
     content = await file.read()
     logging.warning(f"PDF uploaded, bytes length: {len(content)}")
+    
     doc = fitz.open(stream=content, filetype="pdf")
     text = ""
     for i, page in enumerate(doc):
         text += f"\n--- PAGE {i+1} ---\n"
         text += page.get_text() + "\n"
     text = text.strip()
+    
     if not text:
         text = "SYSTEM NOTE: The uploaded PDF could not be read because it appears to be a scanned image or has no readable text layer. The AI cannot see the contents."
     
     logging.warning(f"Extracted text length: {len(text)}")
     return text
 
-def extract_text_from_url(url: str) -> str:
-    """Fetches a webpage and extracts visible text using BeautifulSoup."""
+async def extract_text_from_url(url: str) -> str:
+    """Fetches a webpage and extracts visible text using httpx."""
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # Remove script and style elements

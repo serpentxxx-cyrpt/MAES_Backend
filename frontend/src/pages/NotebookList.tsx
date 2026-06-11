@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Plus, LogOut, Terminal, Activity, Layers, Calendar, ChevronRight } from 'lucide-react';
+import {
+  BookOpenCheck, Plus, LogOut, BookOpen,
+  Layers, Calendar, ChevronRight, User, RefreshCw
+} from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import api from '../lib/apiClient';
 
@@ -13,19 +16,30 @@ interface Notebook {
   sourceCount?: number;
 }
 
+const DOMAIN_OPTIONS = [
+  'Computer Science',
+  'Mathematics',
+  'Physics',
+  'Chemistry',
+  'Biology',
+  'Engineering',
+  'Economics',
+  'General Science',
+];
+
 export default function NotebookList() {
   const navigate = useNavigate();
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
-  
-  // Modal State
+
+  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDomain, setNewDomain] = useState('Computer Science');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    // Get current user profile
     const getProfile = async () => {
       try {
         const { data: { user: sbUser } } = await supabase.auth.getUser();
@@ -33,18 +47,13 @@ export default function NotebookList() {
           setUser(sbUser);
         } else {
           const demoUser = localStorage.getItem('maes_demo_session');
-          if (demoUser) {
-            setUser(JSON.parse(demoUser).user);
-          }
+          if (demoUser) setUser(JSON.parse(demoUser).user);
         }
-      } catch (e) {
+      } catch {
         const demoUser = localStorage.getItem('maes_demo_session');
-        if (demoUser) {
-          setUser(JSON.parse(demoUser).user);
-        }
+        if (demoUser) setUser(JSON.parse(demoUser).user);
       }
     };
-    
     getProfile();
     fetchNotebooks();
   }, []);
@@ -53,11 +62,9 @@ export default function NotebookList() {
     setLoading(true);
     try {
       const res = await api.get('/notebooks');
-      if (res.data.notebooks) {
-        setNotebooks(res.data.notebooks);
-      }
+      if (res.data.notebooks) setNotebooks(res.data.notebooks);
     } catch (e) {
-      console.warn("Failed fetching notebooks", e);
+      console.warn('Failed fetching notebooks', e);
     } finally {
       setLoading(false);
     }
@@ -66,20 +73,19 @@ export default function NotebookList() {
   const handleCreateNotebook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-
+    setCreating(true);
     try {
-      const res = await api.post('/notebooks', {
-        title: newTitle,
-        domain: newDomain
-      });
-      
+      const res = await api.post('/notebooks', { title: newTitle, domain: newDomain });
       if (res.data.notebook) {
         setNotebooks([res.data.notebook, ...notebooks]);
+        navigate(`/notebook/${res.data.notebook.id}`);
       }
+    } catch (e) {
+      console.warn('Failed creating notebook', e);
+    } finally {
+      setCreating(false);
       setIsModalOpen(false);
       setNewTitle('');
-    } catch (e) {
-      console.warn("Failed creating notebook", e);
     }
   };
 
@@ -89,94 +95,147 @@ export default function NotebookList() {
     window.dispatchEvent(new Event('maes_auth_change'));
   };
 
+  const firstName = user?.email?.split('@')[0] || 'Learner';
+  const isDemo = user?.email === 'guest@maes.local';
+
   return (
-    <div className="min-h-screen w-full flex flex-col bg-canvas text-ink font-sans">
-      {/* NAVBAR */}
-      <header className="h-16 border-b-1 border-ink flex items-center justify-between px-6 bg-canvas flex-shrink-0 z-10">
-        <div className="flex items-center gap-4">
-          <div className="bg-brand text-canvas p-2">
-            <Activity size={20} />
+    <div className="notebooks-page">
+      {/* Navbar */}
+      <header className="navbar">
+        <div className="navbar-brand">
+          <div className="navbar-logo">
+            <BookOpenCheck size={20} />
           </div>
-          <h1 className="font-bold text-lg uppercase tracking-widest text-brand">
-            Socratic Terminal // Learning Environment
-          </h1>
+          MAES Learning
         </div>
-        
-        <div className="flex items-center gap-6">
-          <div className="hidden sm:flex items-center gap-2 font-mono text-[10px] uppercase font-bold text-ink/60 bg-ink/5 border border-ink/10 px-2 py-1">
-            <Terminal size={12} className="text-brand" /> Student: {user?.email || 'System'}
+
+        <div className="navbar-actions">
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.375rem 0.875rem',
+            background: 'var(--stone-100)',
+            border: '1.5px solid var(--stone-200)',
+            borderRadius: 'var(--radius)',
+            fontSize: '0.8125rem',
+            color: 'var(--stone-600)',
+            fontWeight: 500,
+          }}>
+            <User size={14} />
+            {isDemo ? 'Guest' : (user?.email || 'Loading...')}
+            {isDemo && (
+              <span className="badge badge-stone" style={{ fontSize: '0.65rem' }}>Demo</span>
+            )}
           </div>
+
+          <button
+            onClick={fetchNotebooks}
+            disabled={loading}
+            className="btn btn-secondary btn-sm"
+            title="Refresh notebooks"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+
+          <button onClick={handleLogout} className="btn btn-secondary btn-sm">
+            <LogOut size={14} />
+            Sign Out
+          </button>
         </div>
       </header>
 
-      {/* WORKSPACE CONTENT */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-6 md:p-10">
-        
-        {/* WELCOME BANNER */}
-        <div className="panel-container mb-8 bg-brand text-canvas flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-[4px_4px_0px_#111111] p-6 border-ink">
+      {/* Main Content */}
+      <main className="notebooks-main">
+        {/* Welcome Banner */}
+        <div className="welcome-banner">
           <div>
-            <h2 className="text-xl md:text-2xl font-bold uppercase tracking-wider text-canvas">
-              Student Socratic Workspace
-            </h2>
-            <p className="font-mono text-xs opacity-80 mt-1 uppercase">
-              Socratic training loops and scaffolding for advanced concept mastery.
+            <p className="welcome-greeting">Welcome back,</p>
+            <h2 className="welcome-title">{firstName.charAt(0).toUpperCase() + firstName.slice(1)}</h2>
+            <p className="welcome-subtitle">
+              {notebooks.length > 0
+                ? `You have ${notebooks.length} active notebook${notebooks.length > 1 ? 's' : ''}. Ready to learn?`
+                : 'Create your first notebook to start an AI-guided learning session.'}
             </p>
           </div>
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
-            className="btn-alert text-xs uppercase tracking-widest flex items-center gap-2 whitespace-nowrap self-stretch md:self-auto justify-center"
+            className="btn"
+            style={{
+              background: '#fff',
+              color: 'var(--green-800)',
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
           >
-            <Plus size={16} /> New Notebook
+            <Plus size={18} />
+            New Notebook
           </button>
         </div>
 
-        {/* SECTION HEADER */}
-        <div className="flex justify-between items-center mb-6 border-b-1 border-ink pb-2">
-          <h3 className="font-mono font-bold uppercase text-sm text-brand tracking-wider flex items-center gap-2">
-            <BookOpen size={16} /> Active Socratic Contexts
+        {/* Section header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: '1.25rem'
+        }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <BookOpen size={18} style={{ color: 'var(--green)' }} />
+            My Notebooks
           </h3>
-          <span className="font-mono text-xs text-ink/60 uppercase">Count: {notebooks.length}</span>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--stone-500)', fontWeight: 500 }}>
+            {notebooks.length} {notebooks.length === 1 ? 'notebook' : 'notebooks'}
+          </span>
         </div>
 
-        {/* NOTEBOOKS GRID */}
+        {/* Notebooks grid */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 font-mono text-xs uppercase opacity-70 gap-2">
-            <div className="w-6 h-6 border-2 border-brand border-t-transparent animate-spin"></div>
-            Loading Socratic Contexts...
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '5rem', gap: '1rem', color: 'var(--stone-400)' }}>
+            <div style={{ width: 32, height: 32, border: '3px solid var(--stone-200)', borderTopColor: 'var(--green)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Loading notebooks...</span>
           </div>
         ) : notebooks.length === 0 ? (
-          <div className="text-center font-mono text-xs py-20 border border-dashed border-ink/30 uppercase opacity-55">
-            No contexts loaded. Click "NEW NOTEBOOK" to mount a Socratic tutoring agent.
+          <div style={{
+            background: 'var(--white)',
+            border: '2px dashed var(--stone-300)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '4rem 2rem',
+            textAlign: 'center',
+          }}>
+            <BookOpen size={48} style={{ color: 'var(--green-300)', margin: '0 auto 1rem' }} />
+            <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--stone-600)', marginBottom: '0.5rem' }}>No notebooks yet</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--stone-400)', marginBottom: '1.5rem' }}>
+              Create your first notebook and start an AI-guided learning session.
+            </p>
+            <button onClick={() => setIsModalOpen(true)} className="btn btn-primary">
+              <Plus size={16} /> Create Notebook
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
             {notebooks.map((nb) => (
-              <div 
-                key={nb.id} 
+              <div
+                key={nb.id}
                 onClick={() => navigate(`/notebook/${nb.id}`)}
-                className="panel-container flex flex-col justify-between hover:bg-ink hover:text-canvas group cursor-pointer transition-colors duration-200 border-ink shadow-[4px_4px_0px_#111111] hover:shadow-[4px_4px_0px_#e88b56]"
+                className="notebook-card"
               >
-                <div>
-                  <div className="flex justify-between items-start gap-4 mb-2">
-                    <span className="font-mono text-[10px] bg-brand text-canvas group-hover:bg-alert group-hover:text-ink px-2 py-0.5 border border-ink font-bold uppercase tracking-wider">
-                      {nb.domain}
-                    </span>
-                    <span className="text-[10px] font-mono text-ink/50 group-hover:text-canvas/50 flex items-center gap-1">
-                      <Calendar size={10} /> {new Date(nb.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <h4 className="text-lg font-bold uppercase tracking-wide group-hover:text-canvas leading-tight mb-4">
-                    {nb.title}
-                  </h4>
-                </div>
-                
-                <div className="flex justify-between items-center border-t border-ink/10 group-hover:border-canvas/20 pt-3 mt-4">
-                  <span className="font-mono text-[10px] uppercase font-bold text-ink/70 group-hover:text-canvas/70 flex items-center gap-1.5">
-                    <Layers size={12} className="text-alert" /> {nb.sourceCount !== undefined ? nb.sourceCount : 0} Sources Mounted
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
+                  <span className="notebook-domain-badge">
+                    <Layers size={10} />
+                    {nb.domain}
                   </span>
-                  
-                  <span className="text-alert font-bold flex items-center text-xs uppercase tracking-wider group-hover:translate-x-1 transition-transform">
-                    Open Notebook <ChevronRight size={14} />
+                  <span style={{ fontSize: '0.7rem', color: 'var(--stone-400)', display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
+                    <Calendar size={10} />
+                    {new Date(nb.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+
+                <h4 className="notebook-title">{nb.title}</h4>
+
+                <div className="notebook-meta">
+                  <span className="notebook-meta-info">
+                    <BookOpen size={12} />
+                    {nb.sourceCount ?? 0} source{nb.sourceCount !== 1 ? 's' : ''}
+                  </span>
+                  <span className="notebook-open-link">
+                    Open <ChevronRight size={14} />
                   </span>
                 </div>
               </div>
@@ -185,58 +244,67 @@ export default function NotebookList() {
         )}
       </main>
 
-      {/* CREATE MODAL */}
+      {/* Create Notebook Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/35 backdrop-blur-sm p-4">
-          <div className="panel-container w-full max-w-md bg-canvas border-ink shadow-[6px_6px_0px_#111111] relative">
-            <h3 className="text-xl font-bold text-brand uppercase tracking-wider border-b-1 border-ink pb-3 mb-4">
-              Mount Core Context
-            </h3>
-            
-            <form onSubmit={handleCreateNotebook} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-mono text-[10px] font-bold uppercase text-ink/70">
-                  Notebook Context Title
-                </label>
-                <input 
-                  type="text" 
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Create New Notebook</h2>
+
+            <form onSubmit={handleCreateNotebook} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                <label className="pref-label" htmlFor="nb-title">Notebook title</label>
+                <input
+                  id="nb-title"
+                  type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
+                  className="input"
                   placeholder="e.g. Introduction to Calculus"
-                  className="border border-ink bg-transparent p-3 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-brand"
                   required
+                  autoFocus
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="font-mono text-[10px] font-bold uppercase text-ink/70">
-                  Pedagogical Domain Area
-                </label>
-                <select 
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                <label className="pref-label" htmlFor="nb-domain">Subject area</label>
+                <select
+                  id="nb-domain"
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
-                  className="border border-ink bg-transparent p-3 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-brand appearance-none"
+                  className="input select"
                 >
-                  <option value="Computer Science">Computer Science</option>
-                  <option value="Physics">Physics</option>
-                  <option value="Mathematics">Mathematics</option>
-                  <option value="General Science">General Science</option>
+                  {DOMAIN_OPTIONS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button 
-                  type="button" 
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="btn-primary flex-1 bg-transparent text-ink hover:bg-ink/5"
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn-alert flex-1 uppercase tracking-widest text-xs"
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  disabled={creating || !newTitle.trim()}
                 >
-                  Mount Context
+                  {creating ? (
+                    <>
+                      <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} />
+                      Create Notebook
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -244,10 +312,19 @@ export default function NotebookList() {
         </div>
       )}
 
-      {/* FOOTER */}
-      <footer className="h-8 border-t-1 border-ink bg-brand text-canvas flex items-center px-6 justify-between font-mono text-[10px] uppercase font-bold flex-shrink-0">
-        <div>Sys: Online</div>
-        <div>M.A.E.S Platform v1.0.0</div>
+      {/* Footer */}
+      <footer style={{
+        padding: '0.75rem 1.5rem',
+        borderTop: '1px solid var(--stone-200)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: 'var(--white)',
+        fontSize: '0.75rem',
+        color: 'var(--stone-400)',
+      }}>
+        <span>MAES Adaptive Learning Platform</span>
+        <span>v2.0 · Powered by Groq & Mistral AI</span>
       </footer>
     </div>
   );

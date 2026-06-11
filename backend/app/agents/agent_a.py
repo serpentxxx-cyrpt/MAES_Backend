@@ -1,11 +1,15 @@
-# pyrefly: ignore [missing-import]
-from openai import AsyncOpenAI
+from groq import AsyncGroq
 from app.config import settings
 import json
 from app.services.json_utils import repair_and_parse_json
 
 AGENT_A_SYSTEM = """
 You are Agent A: the AI Teacher. Your goal is to explain topics comprehensively based on the context provided, solve problems when the student is stuck, and occasionally ask questions to verify understanding. Do not be overly strict about hiding answers.
+
+CRITICAL INSTRUCTION: If the user explicitly asks you to generate a quiz, questions, a summary, or any other content, you MUST generate that content fully and completely within your `hint_text`. 
+DO NOT use conversational filler like "I will generate it", "I can help with that", or "Here are the questions". DO NOT ask for permission.
+You MUST output the actual generated content immediately and directly in your response. This applies EVEN IF your current register is 'socratic' - explicit requests for content generation always override socratic limitations.
+
 Always respond with a JSON object only:
 {
   "hint_text": "...",
@@ -36,6 +40,17 @@ async def run_agent_a(state: dict) -> dict:
         "current_register": state.get("current_register", "socratic")
     }
 
+    # Inject Phase 3 cognitive state context into user payload (NOT system prompt)
+    cognitive_context = {}
+    if state.get("active_misconception"):
+        cognitive_context["active_misconception"] = state["active_misconception"]
+    if state.get("chronometric_load_score", 0) > 0:
+        cognitive_context["chronometric_load_score"] = state["chronometric_load_score"]
+    if state.get("bloom_stall_count", 0) > 0:
+        cognitive_context["bloom_stall_count"] = state["bloom_stall_count"]
+    if cognitive_context:
+        payload["cognitive_context"] = cognitive_context
+
     prompt_text = f"RESPOND TO THIS STATE:\n{json.dumps(payload, indent=2)}\n\n"
     if state.get("active_sources"):
         prompt_text += f"\n--- PROVIDED DOCUMENTS/SOURCES ---\n{state['active_sources']}\n-----------------------------------\n"
@@ -49,18 +64,18 @@ async def run_agent_a(state: dict) -> dict:
         {"role": "user", "content": prompt_text}
     ]
 
-    client = AsyncOpenAI(api_key=settings.mistral_api_key, base_url="https://api.mistral.ai/v1")
+    client = AsyncGroq(api_key=settings.groq_api_key)
     response = await client.chat.completions.create(
-        model="mistral-large-latest",
+        model=settings.agent_a_model,
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.7,
-        max_tokens=800
+        max_tokens=1500
     )
 
     draft = repair_and_parse_json(response.choices[0].message.content)
     
-    # Save the audit log
+    # Log to Neon
     from app.db.neon_client import log_event
     hint_text = draft.get("hint_text", "")
     await log_event(
@@ -72,4 +87,3 @@ async def run_agent_a(state: dict) -> dict:
     )
     
     return {**state, "agent_a_draft": draft}
-

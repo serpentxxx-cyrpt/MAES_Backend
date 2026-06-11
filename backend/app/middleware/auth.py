@@ -18,6 +18,10 @@ def get_current_user(request: Request):
     
     token = auth_header.split(" ")[1]
     
+    # Guest mode bypass
+    if token == "DEMO_USER_TOKEN":
+        return {"user_id": "123e4567-e89b-12d3-a456-426614174000", "role": "authenticated"}
+    
     # We will use python-jose to decode and verify the Supabase JWT.
     # Supabase uses HS256 with the JWT secret.
     # For dev/prototype we fetch claims without signature validation,

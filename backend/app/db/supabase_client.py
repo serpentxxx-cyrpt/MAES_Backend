@@ -47,7 +47,7 @@ def end_session(session_id: str):
     try:
         supabase.table("sessions").update({
             "is_active": False,
-            "ended_at": datetime.datetime.utcnow().isoformat()
+            "ended_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }).eq("id", session_id).execute()
     except Exception:
         pass

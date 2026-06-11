@@ -3,29 +3,50 @@ import { useEffect, useState } from 'react';
 import NotebookView from './pages/NotebookView';
 import NotebookList from './pages/NotebookList';
 
-// We intentionally do not import LoginPage to leave it inactive, but we leave the file in the repository.
+import LoginPage from './pages/LoginPage';
+import { supabase } from './lib/supabaseClient';
 
 function App() {
-  const [, setSession] = useState<any>(null);
+  const [session, setSession] = useState<any>(null);
+  const [demoSession, setDemoSession] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Unconditionally establish direct access mock session for demo mode
-    const demoPayload = {
-      access_token: "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwgInJvbGUiOiAiZGVtbyJ9.abcdefg123456789",
-      user: {
-        id: "123e4567-e89b-12d3-a456-426614174000",
-        email: "demo@socratic.local",
-        user_metadata: { role: "demo" }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (localStorage.getItem('maes_demo_session')) {
+        setDemoSession(true);
+      }
+      setLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    const handleAuthChange = () => {
+      if (localStorage.getItem('maes_demo_session')) {
+        setDemoSession(true);
+      } else {
+        setDemoSession(false);
       }
     };
-    localStorage.setItem('maes_demo_session', JSON.stringify(demoPayload));
-    setSession(demoPayload);
-    setLoading(false);
+    window.addEventListener('maes_auth_change', handleAuthChange);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('maes_auth_change', handleAuthChange);
+    };
   }, []);
 
   if (loading) {
     return <div className="min-h-screen bg-canvas text-ink flex items-center justify-center font-mono font-bold uppercase tracking-widest">Initializing...</div>;
+  }
+
+  if (!session && !demoSession) {
+    return <LoginPage />;
   }
 
   return (

@@ -12,6 +12,7 @@ class SessionEndRequest(BaseModel):
 class TurnRequest(BaseModel):
     session_id: str
     student_message: str
+    chronometric_load_score: float = 0.0  # Phase 3 CCLI: 0.0 = relaxed, 1.0 = high cognitive load
 
 class AgentADraft(BaseModel):
     hint_text: str
@@ -71,7 +72,7 @@ class GenerateStudyGuideRequest(BaseModel):
 
 # Simulation Models
 class SimulateRequest(BaseModel):
-    profile_id: str
-    n_turns: int
-    learning_rate: float
+    notebook_id: str
+    n_turns: int = 5
+    topic: Optional[str] = None
 
