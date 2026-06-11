@@ -40,7 +40,7 @@ async def fallback_hint(student_message: str, sources_text: str = "") -> str:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=300
+            max_tokens=2000
         )
         return response.choices[0].message.content
     except Exception as e:

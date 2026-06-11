@@ -8,15 +8,11 @@ import { supabase } from './lib/supabaseClient';
 
 function App() {
   const [session, setSession] = useState<any>(null);
-  const [demoSession, setDemoSession] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (localStorage.getItem('maes_demo_session')) {
-        setDemoSession(true);
-      }
       setLoading(false);
     });
 
@@ -26,18 +22,8 @@ function App() {
       setSession(session);
     });
 
-    const handleAuthChange = () => {
-      if (localStorage.getItem('maes_demo_session')) {
-        setDemoSession(true);
-      } else {
-        setDemoSession(false);
-      }
-    };
-    window.addEventListener('maes_auth_change', handleAuthChange);
-
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener('maes_auth_change', handleAuthChange);
     };
   }, []);
 
@@ -45,7 +31,7 @@ function App() {
     return <div className="min-h-screen bg-canvas text-ink flex items-center justify-center font-mono font-bold uppercase tracking-widest">Initializing...</div>;
   }
 
-  if (!session && !demoSession) {
+  if (!session) {
     return <LoginPage />;
   }
 

@@ -53,7 +53,7 @@ async def run_agent_p(state: dict) -> dict:
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.6,
-        max_tokens=600
+        max_tokens=2000
     )
 
     result = repair_and_parse_json(response.choices[0].message.content)

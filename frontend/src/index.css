@@ -805,7 +805,7 @@ a:hover { color: var(--green-600); }
 /* ============================================================
    TELEMETRY DASHBOARD
    ============================================================ */
-.telemetry-view { padding: 2rem; overflow-y: auto; flex: 1; background: var(--off-white); }
+.telemetry-view { height: 100%; padding: 2rem; overflow-y: auto; flex: 1; background: var(--off-white); }
 .telemetry-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 2rem; gap: 1rem; }
 .telemetry-title { font-size: 1.5rem; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
 .telemetry-subtitle { font-size: 0.875rem; color: var(--stone-500); margin-top: 0.25rem; }
@@ -839,6 +839,7 @@ a:hover { color: var(--green-600); }
    AUDIT LOGS VIEW
    ============================================================ */
 .logs-view {
+  height: 100%;
   flex: 1;
   overflow: hidden;
   display: flex;
@@ -911,7 +912,7 @@ a:hover { color: var(--green-600); }
 /* ============================================================
    PREFERENCES VIEW
    ============================================================ */
-.pref-view { flex: 1; overflow-y: auto; padding: 2rem; background: var(--off-white); }
+.pref-view { height: 100%; flex: 1; overflow-y: auto; padding: 2rem; background: var(--off-white); }
 .pref-section {
   background: var(--white);
   border: 1.5px solid var(--stone-200);
