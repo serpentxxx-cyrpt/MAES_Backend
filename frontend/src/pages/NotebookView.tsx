@@ -629,15 +629,31 @@ export default function NotebookView() {
                   No log entries yet. Start a session and ask a question to see AI decision logs here.
                 </div>
               ) : (
-                telemetryLogs.map((log: any, idx) => (
-                  <div key={idx} className="log-entry">
-                    <span className="log-time">{new Date(log.created_at || Date.now()).toLocaleTimeString()}</span>
-                    <span className={`log-event-badge ${log.status === 'approved' ? 'approved' : 'rejected'}`}>
-                      {log.status === 'approved' ? 'Approved' : 'Revised'}
-                    </span>
-                    <span className="log-text">{log.text || log.decision_reason || 'Audit entry logged.'}</span>
-                  </div>
-                ))
+                telemetryLogs.map((log: any, idx) => {
+                  let badgeClass = 'approved';
+                  let badgeText = 'APPROVED';
+                  
+                  if (log.event === 'agent_a' || log.event === 'agent_a_draft') { badgeClass = 'agent_a'; badgeText = 'AGENT A'; }
+                  else if (log.event === 'agent_b' || log.event === 'agent_b_done') { badgeClass = 'agent_b'; badgeText = 'AGENT B'; }
+                  else if (log.event === 'agent_p' || log.event === 'agent_p_challenge') { badgeClass = 'agent_p'; badgeText = 'AGENT P'; }
+                  else if (log.event === 'ccli') { badgeClass = 'ccli'; badgeText = 'CCLI'; }
+                  else if (log.event === 'orchestrator') { badgeClass = 'orchestrator'; badgeText = 'ORCHESTRATOR'; }
+                  else if (log.event === 'gcd') { badgeClass = 'gcd'; badgeText = 'GCD'; }
+                  else if (log.event === 'dvs') { badgeClass = 'dvs'; badgeText = 'DVS'; }
+                  else if (log.event === 'fallback') { badgeClass = 'fallback'; badgeText = 'FALLBACK LLM'; }
+                  else if (log.event === 'dashboard') { badgeClass = 'dashboard'; badgeText = 'DASHBOARD'; }
+                  else if (log.status === 'rejected') { badgeClass = 'rejected'; badgeText = 'REVISED'; }
+
+                  return (
+                    <div key={idx} className="log-entry">
+                      <span className="log-time">{log.time || new Date(log.created_at || Date.now()).toLocaleTimeString()}</span>
+                      <span className={`log-event-badge ${badgeClass}`}>
+                        {badgeText}
+                      </span>
+                      <span className="log-text">{log.text || log.decision_reason || 'Audit entry logged.'}</span>
+                    </div>
+                  );
+                })
               )}
               <div className="log-cursor">█</div>
             </div>

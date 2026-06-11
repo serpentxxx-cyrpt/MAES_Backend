@@ -66,7 +66,7 @@ Generate an SVG diagram that visually explains the core concept they are struggl
 
         # Log the DVS event to Neon
         try:
-            from app.db.neon_client import get_neon_pool
+            from app.db.neon_client import get_neon_pool, log_event
             pool = get_neon_pool()
             async with pool.acquire() as conn:
                 await conn.execute("""
@@ -77,6 +77,14 @@ Generate an SVG diagram that visually explains the core concept they are struggl
                     f"CLS:{state.get('chronometric_load_score', 0.0):.2f} | misconception: {active_misconception[:80]}",
                     svg_payload
                 )
+            
+            await log_event(
+                session_id=state.get("session_id", ""),
+                student_id=state.get("student_id", ""),
+                event_type="dvs",
+                text="DVS: Generating Dynamic Visual Scaffolding diagram to shift learning modality.",
+                status="success"
+            )
         except Exception as e:
             logger.error(f"[DVS] Failed to log dvs_event to Neon: {e}")
 
